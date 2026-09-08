@@ -1,0 +1,119 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Helper validation functions
+    function isValidTimestamp() {
+      return request.time != null;
+    }
+    
+    function hasValidId(docId) {
+      return docId is string && docId.size() > 0 && docId.size() <= 128;
+    }
+
+    // Core Business Collections Security
+    match /shops/{shopId} {
+      allow read: if true;
+      allow write: if hasValidId(shopId) && request.resource.data.name is string;
+    }
+
+    match /orders/{orderId} {
+      allow read: if true;
+      allow create, update: if hasValidId(orderId) && request.resource.data.orderTotal >= 0;
+      allow delete: if true;
+    }
+
+    match /collections/{collectionId} {
+      allow read: if true;
+      allow create, update: if hasValidId(collectionId) && request.resource.data.amountCollected >= 0;
+      allow delete: if true;
+    }
+
+    match /returns/{returnId} {
+      allow read: if true;
+      allow create, update: if hasValidId(returnId);
+      allow delete: if true;
+    }
+
+    match /markets/{marketId} {
+      allow read: if true;
+      allow write: if hasValidId(marketId);
+    }
+
+    match /marketRoutes/{routeId} {
+      allow read: if true;
+      allow write: if hasValidId(routeId);
+    }
+
+    match /connectedMarkets/{cmId} {
+      allow read: if true;
+      allow write: if hasValidId(cmId);
+    }
+
+    match /marketers/{marketerId} {
+      allow read: if true;
+      allow write: if hasValidId(marketerId) && request.resource.data.name is string;
+    }
+
+    match /checkIns/{checkInId} {
+      allow read: if true;
+      allow write: if hasValidId(checkInId);
+    }
+
+    match /visits/{visitId} {
+      allow read: if true;
+      allow write: if hasValidId(visitId);
+    }
+
+    match /targets/{targetId} {
+      allow read: if true;
+      allow write: if hasValidId(targetId);
+    }
+
+    match /handovers/{handoverId} {
+      allow read: if true;
+      allow write: if hasValidId(handoverId);
+    }
+
+    match /complaints/{complaintId} {
+      allow read: if true;
+      allow write: if hasValidId(complaintId);
+    }
+
+    match /followups/{followupId} {
+      allow read: if true;
+      allow write: if hasValidId(followupId);
+    }
+
+    match /importBatches/{batchId} {
+      allow read: if true;
+      allow write: if hasValidId(batchId);
+    }
+
+    match /products/{productId} {
+      allow read: if true;
+      allow write: if hasValidId(productId);
+    }
+
+    match /dailyReports/{reportId} {
+      allow read: if true;
+      allow write: if hasValidId(reportId);
+    }
+
+    match /auditLogs/{logId} {
+      allow read: if true;
+      allow create: if hasValidId(logId);
+      allow update, delete: if false; // Immutable audit trails
+    }
+
+    match /systemSettings/{settingId} {
+      allow read: if true;
+      allow write: if hasValidId(settingId);
+    }
+
+    // Default deny all other collections
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

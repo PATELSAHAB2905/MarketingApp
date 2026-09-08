@@ -36,13 +36,16 @@ export function getDefaultPassword(mobile) {
 }
 
 export const AuthProvider = ({ children }) => {
-  // Current logged in user (null if not logged in)
+  // Current logged in user (null by default on new session, strictly stored in sessionStorage)
   const [currentUser, setCurrentUser] = useState(() => {
-    const saved = localStorage.getItem('PATEL_CURRENT_USER');
+    // Clear any legacy persistent login from localStorage so fresh session always requires login
+    localStorage.removeItem('PATEL_CURRENT_USER');
+    
+    const saved = sessionStorage.getItem('PATEL_SESSION_USER');
     if (saved) {
       try { return JSON.parse(saved); } catch (e) {}
     }
-    return null; // Require login
+    return null; // Require login every new session
   });
 
   // Custom passwords map: { [userId]: 'customPassword' }
@@ -79,13 +82,14 @@ export const AuthProvider = ({ children }) => {
     return DEFAULT_ADMIN;
   });
 
-  // Sync state to localStorage
+  // Sync session state to sessionStorage (expires when browser session ends)
   useEffect(() => {
     if (currentUser) {
-      localStorage.setItem('PATEL_CURRENT_USER', JSON.stringify(currentUser));
+      sessionStorage.setItem('PATEL_SESSION_USER', JSON.stringify(currentUser));
     } else {
-      localStorage.removeItem('PATEL_CURRENT_USER');
+      sessionStorage.removeItem('PATEL_SESSION_USER');
     }
+    localStorage.removeItem('PATEL_CURRENT_USER');
   }, [currentUser]);
 
   useEffect(() => {
@@ -377,6 +381,7 @@ export const AuthProvider = ({ children }) => {
 
   const logout = () => {
     setCurrentUser(null);
+    sessionStorage.removeItem('PATEL_SESSION_USER');
     localStorage.removeItem('PATEL_CURRENT_USER');
   };
 
