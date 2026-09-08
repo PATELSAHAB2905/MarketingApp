@@ -35,7 +35,7 @@ export default function LoginPage() {
   const [showMarketerPass, setShowMarketerPass] = useState(false);
 
   // Admin Form State (Requires Gmail ID / Email + Password)
-  const [adminEmail, setAdminEmail] = useState('patelsahab2905@gmail.com');
+  const [adminEmail, setAdminEmail] = useState('patelsahabspices@gmail.com');
   const [adminPassword, setAdminPassword] = useState('');
   const [showAdminPass, setShowAdminPass] = useState(false);
 

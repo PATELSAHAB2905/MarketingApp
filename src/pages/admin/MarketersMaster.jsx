@@ -16,7 +16,7 @@ import {
 
 export default function MarketersMaster() {
   const { marketers, setMarketers, checkIns = [], getFormattedDate } = useData();
-  const { adminResetMarketerPassword } = useAuth();
+  const { adminResetMarketerPassword, onMarketerMobileChanged } = useAuth();
 
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingMarketer, setEditingMarketer] = useState(null);
@@ -40,6 +40,8 @@ export default function MarketersMaster() {
       joinedDate: todayDate,
     };
     setMarketers([...marketers, newMkt]);
+    onMarketerMobileChanged(newMkt.id, cleanMobile);
+
     setShowAddModal(false);
     setName('');
     setMobile('');
@@ -50,6 +52,8 @@ export default function MarketersMaster() {
     e.preventDefault();
     if (!editingMarketer) return;
     const cleanMobile = mobile.trim();
+    const isMobileChanged = editingMarketer.mobile !== cleanMobile;
+
     setMarketers((prev) =>
       prev.map((m) =>
         m.id === editingMarketer.id
@@ -62,6 +66,14 @@ export default function MarketersMaster() {
           : m
       )
     );
+
+    // If mobile number changed, automatically reset their password to last 4 digits of new mobile
+    if (isMobileChanged) {
+      onMarketerMobileChanged(editingMarketer.id, cleanMobile);
+      const newLast4 = cleanMobile.length >= 4 ? cleanMobile.slice(-4) : cleanMobile;
+      alert(`Mobile number updated to ${cleanMobile}.\nLogin password has been automatically reset to: ${newLast4}`);
+    }
+
     setEditingMarketer(null);
     setName('');
     setMobile('');
@@ -96,7 +108,7 @@ export default function MarketersMaster() {
             MARKETERS MASTER DATABASE
           </h1>
           <p className="text-xs text-slate-500 font-medium">
-            Field sales executive profiles, contact numbers & account management
+            Field sales executive profiles, mobile numbers & credentials management
           </p>
         </div>
         <button
@@ -167,10 +179,10 @@ export default function MarketersMaster() {
                 <div className="flex items-center justify-between pt-1 border-t border-slate-200/60 text-[11px]">
                   <span className="text-slate-600 font-bold flex items-center gap-1">
                     <KeyRound className="w-3.5 h-3.5 text-amber-600" />
-                    Initial Password:
+                    Login Password:
                   </span>
                   <span className="bg-amber-100 text-amber-950 font-black px-2 py-0.5 rounded-lg border border-amber-300">
-                    {defaultPass}
+                    Last 4 Digits ({defaultPass})
                   </span>
                 </div>
               </div>
@@ -250,7 +262,7 @@ export default function MarketersMaster() {
                 />
                 {mobile.length >= 4 && (
                   <p className="text-[11px] text-amber-900 font-bold mt-1 bg-amber-50 p-2 rounded-lg border border-amber-200">
-                    🔑 Initial login password for this marketer will be: <strong>{mobile.slice(-4)}</strong>.
+                    🔑 Login password for this mobile will automatically be: <strong>{mobile.slice(-4)}</strong>.
                   </p>
                 )}
               </div>
@@ -283,7 +295,7 @@ export default function MarketersMaster() {
                   type="submit"
                   className="flex-1 py-3 bg-gradient-to-r from-red-700 to-red-800 text-white font-extrabold rounded-xl shadow-md"
                 >
-                  {editingMarketer ? 'Update Profile' : 'Save Marketer'}
+                  {editingMarketer ? 'Update & Reset Password' : 'Save Marketer'}
                 </button>
               </div>
             </form>

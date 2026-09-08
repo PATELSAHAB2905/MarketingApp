@@ -11,7 +11,7 @@ export const DEFAULT_ADMIN = {
   id: 'admin-1',
   name: 'Patel Sahab Management',
   role: 'ADMIN',
-  email: 'patelsahab2905@gmail.com', // Admin Gmail ID
+  email: 'patelsahabspices@gmail.com', // Primary Admin Gmail ID
   secondaryEmail: 'admin@patelsahab.com',
   mobile: '9826022905',
   username: 'admin',
@@ -67,7 +67,14 @@ export const AuthProvider = ({ children }) => {
   const [adminProfile, setAdminProfile] = useState(() => {
     const saved = localStorage.getItem('PATEL_ADMIN_PROFILE');
     if (saved) {
-      try { return JSON.parse(saved); } catch (e) {}
+      try {
+        const parsed = JSON.parse(saved);
+        return {
+          ...DEFAULT_ADMIN,
+          ...parsed,
+          email: parsed.email || 'patelsahabspices@gmail.com',
+        };
+      } catch (e) {}
     }
     return DEFAULT_ADMIN;
   });
@@ -130,9 +137,45 @@ export const AuthProvider = ({ children }) => {
   };
 
   /**
+   * Automatically triggered when Marketer's mobile number is changed by Admin.
+   * Resets the marketer's password back to the last 4 digits of the new mobile number.
+   * Clears old passwords and resets failed attempts.
+   */
+  const onMarketerMobileChanged = (marketerId, newMobile) => {
+    // 1. Remove custom password so it reverts to the last 4 digits of new mobile
+    setUserPasswords((prev) => {
+      const next = { ...prev };
+      delete next[marketerId];
+      return next;
+    });
+
+    // 2. Reset failed attempts
+    resetAttempts(marketerId);
+
+    // 3. If the currently logged in user is this marketer, update their mobile in session
+    setCurrentUser((prev) => {
+      if (prev && prev.id === marketerId) {
+        return {
+          ...prev,
+          mobile: newMobile,
+        };
+      }
+      return prev;
+    });
+
+    // 4. Sync security state to Firestore
+    setDocument('systemSettings', `auth_${marketerId}`, {
+      userId: marketerId,
+      mobile: newMobile,
+      hasCustomPassword: false,
+      updatedAt: new Date().toISOString(),
+    }).catch(() => {});
+  };
+
+  /**
    * Login with password
    */
-  const loginWithPassword = ({ role, marketerId, adminEmail, password, marketersList = [] }) => {
+  const loginWithPassword = ({ role, marketerId, marketerMobile, adminEmail, password, marketersList = [] }) => {
     const cleanPass = String(password || '').trim();
 
     if (role === 'ADMIN') {
@@ -150,10 +193,10 @@ export const AuthProvider = ({ children }) => {
 
       const inputEmail = String(adminEmail || '').trim().toLowerCase();
       const validAdminEmails = [
+        'patelsahabspices@gmail.com',
         (adminProfile.email || '').toLowerCase(),
         (adminProfile.secondaryEmail || '').toLowerCase(),
         'admin@patelsahab.com',
-        'patelsahab2905@gmail.com',
         'admin',
       ];
 
@@ -162,7 +205,7 @@ export const AuthProvider = ({ children }) => {
           success: false,
           isLocked: false,
           attempts: currentAttempts,
-          error: 'Invalid Admin Gmail ID or Email address. Please enter a valid registered Admin email.',
+          error: 'Invalid Admin Gmail ID. Please enter patelsahabspices@gmail.com.',
         };
       }
 
@@ -192,14 +235,24 @@ export const AuthProvider = ({ children }) => {
     } else {
       // MARKETER LOGIN
       const allMarketers = marketersList.length > 0 ? marketersList : Object.values(INITIAL_MARKETER_ROSTER);
-      const targetMarketer = allMarketers.find((m) => m.id === marketerId);
+      let targetMarketer = null;
+
+      if (marketerId) {
+        targetMarketer = allMarketers.find((m) => m.id === marketerId);
+      } else if (marketerMobile) {
+        const cleanInputDigits = String(marketerMobile).replace(/\D/g, '');
+        targetMarketer = allMarketers.find((m) => {
+          const mDigits = String(m.mobile || '').replace(/\D/g, '');
+          return mDigits === cleanInputDigits || (cleanInputDigits.length >= 4 && mDigits.endsWith(cleanInputDigits));
+        });
+      }
 
       if (!targetMarketer) {
         return {
           success: false,
           isLocked: false,
           attempts: 0,
-          error: 'Marketer profile not found. Please select your name from the list.',
+          error: 'Marketer profile not found. Please check your registered mobile number.',
         };
       }
 
@@ -342,6 +395,7 @@ export const AuthProvider = ({ children }) => {
         unlockAndResetWithMasterPassword,
         changePassword,
         adminResetMarketerPassword,
+        onMarketerMobileChanged,
         getEffectivePassword,
         getAttemptsCount,
         isAccountLocked,
