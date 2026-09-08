@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { DataProvider } from './context/DataContext';
 
+import LoginPage from './pages/auth/LoginPage';
 import TopNavbar from './components/layout/TopNavbar';
 import AdminSidebar from './components/layout/AdminSidebar';
 import MarketerBottomNav from './components/layout/MarketerBottomNav';
@@ -39,6 +40,11 @@ function MainLayout() {
   const { currentUser } = useAuth();
   const [adminTab, setAdminTab] = useState('dashboard');
   const [marketerTab, setMarketerTab] = useState('home');
+
+  // If not logged in, render the secure LoginPage
+  if (!currentUser) {
+    return <LoginPage />;
+  }
 
   const isAdmin = currentUser?.role === 'ADMIN';
 
@@ -127,3 +133,4 @@ export default function App() {
     </AuthProvider>
   );
 }
+

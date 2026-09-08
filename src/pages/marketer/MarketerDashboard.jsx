@@ -16,6 +16,7 @@ import MarketFeedbackForm from './MarketFeedbackForm';
 import EndOfDayCheckout from './EndOfDayCheckout';
 import MarketerPerformance from './MarketerPerformance';
 import MarketerPartyStatement from './MarketerPartyStatement';
+import ChangePasswordModal from '../../components/common/ChangePasswordModal';
 
 import {
   Play,
@@ -41,10 +42,15 @@ import {
   X,
   Receipt,
   Eye,
+  KeyRound,
+  LogOut,
+  User,
+  Phone,
+  Shield,
 } from 'lucide-react';
 
 export default function MarketerDashboard({ activeTab, setActiveTab }) {
-  const { currentUser } = useAuth();
+  const { currentUser, logout } = useAuth();
   const {
     getFormattedDate,
     getTodayMarket,
@@ -67,6 +73,7 @@ export default function MarketerDashboard({ activeTab, setActiveTab }) {
   const [viewingOrder, setViewingOrder] = useState(null);
   const [viewingReturn, setViewingReturn] = useState(null);
   const [lastReceiptCollection, setLastReceiptCollection] = useState(null);
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
 
   const todayDate = getFormattedDate();
   const todayMarket = getTodayMarket(currentUser?.id, todayDate);
@@ -227,7 +234,50 @@ export default function MarketerDashboard({ activeTab, setActiveTab }) {
     if (activeTab === 'more') {
       return (
         <div className="pb-24 p-4 max-w-md mx-auto space-y-4">
-          <h2 className="text-lg font-bold text-slate-800">MORE OPTIONS</h2>
+          <h2 className="text-lg font-black text-slate-900 uppercase">MORE OPTIONS & SETTINGS</h2>
+
+          {/* Marketer Profile & Security Card */}
+          <div className="bg-gradient-to-br from-slate-900 to-red-950 text-white p-5 rounded-3xl shadow-lg border border-red-900/40 space-y-3">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-500 text-slate-950 flex items-center justify-center font-black text-lg shadow-md">
+                {currentUser?.name ? currentUser.name.charAt(0) : 'M'}
+              </div>
+              <div>
+                <h3 className="font-extrabold text-base text-amber-200">{currentUser?.name}</h3>
+                <p className="text-xs text-slate-300 flex items-center gap-1 mt-0.5">
+                  <Phone className="w-3 h-3 text-amber-400" />
+                  <span>{currentUser?.mobile || 'No Mobile Registered'}</span>
+                </p>
+                <p className="text-[10px] text-red-200 font-bold uppercase mt-0.5">
+                  ID: {currentUser?.id} • Role: MARKETER
+                </p>
+              </div>
+            </div>
+
+            {/* Change Password Trigger Button */}
+            <div className="pt-2 border-t border-white/10 flex gap-2">
+              <button
+                onClick={() => setShowPasswordModal(true)}
+                className="flex-1 py-2.5 px-3 bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-xl font-black text-xs flex items-center justify-center gap-2 shadow-md active:scale-98 transition-all"
+              >
+                <KeyRound className="w-4 h-4" />
+                <span>Change Password</span>
+              </button>
+
+              <button
+                onClick={() => {
+                  if (window.confirm('Kya aap sure hain ki Logout karna chahte hain?')) {
+                    logout();
+                  }
+                }}
+                className="py-2.5 px-3 bg-red-950 hover:bg-red-900 text-red-200 hover:text-white rounded-xl font-bold text-xs border border-red-800/60 flex items-center justify-center gap-1.5 transition-colors"
+                title="Log Out"
+              >
+                <LogOut className="w-4 h-4" />
+                <span>Logout</span>
+              </button>
+            </div>
+          </div>
 
           <button
             onClick={() => setActiveTab('statements')}
@@ -1392,6 +1442,12 @@ return (
           onClose={() => setLastReceiptCollection(null)}
         />
       )}
+
+      {/* Change Password Modal */}
+      <ChangePasswordModal
+        isOpen={showPasswordModal}
+        onClose={() => setShowPasswordModal(false)}
+      />
     </>
   );
 }

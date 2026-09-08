@@ -1,13 +1,35 @@
 import React, { useState } from 'react';
 import { useData } from '../../context/DataContext';
+import { useAuth } from '../../context/AuthContext';
 import { getFirebaseConfig, saveFirebaseConfig } from '../../services/firebase';
-import { Settings, Shield, Flame, RefreshCw, CheckCircle2, Clock, Percent } from 'lucide-react';
+import ChangePasswordModal from '../../components/common/ChangePasswordModal';
+import {
+  Settings,
+  Shield,
+  Flame,
+  RefreshCw,
+  CheckCircle2,
+  Clock,
+  Percent,
+  KeyRound,
+  Phone,
+  Lock,
+  User,
+} from 'lucide-react';
 
 export default function SystemSettings() {
   const { gstConfig, setGstConfig, creditPolicy, setCreditPolicy, resetToSeedData } = useData();
+  const { currentUser, adminProfile, updateAdminProfile } = useAuth();
 
+  const [showPassModal, setShowPassModal] = useState(false);
   const [fbConfig, setFbConfig] = useState(getFirebaseConfig());
   const [savedFb, setSavedFb] = useState(false);
+
+  // Admin Profile Edit State
+  const [adminName, setAdminName] = useState(adminProfile?.name || 'Patel Sahab Management');
+  const [adminMobile, setAdminMobile] = useState(adminProfile?.mobile || '9826022905');
+  const [adminEmail, setAdminEmail] = useState(adminProfile?.email || 'admin@patelsahab.com');
+  const [savedAdminProfile, setSavedAdminProfile] = useState(false);
 
   // GST & Policy states
   const [gstEnabled, setGstEnabled] = useState(gstConfig?.gstEnabled ?? true);
@@ -28,6 +50,17 @@ export default function SystemSettings() {
     alert('GST & TAX CREDIT POLICY SAVED ✓');
   };
 
+  const handleSaveAdminProfile = (e) => {
+    e.preventDefault();
+    updateAdminProfile({
+      name: adminName.trim(),
+      mobile: adminMobile.trim(),
+      email: adminEmail.trim(),
+    });
+    setSavedAdminProfile(true);
+    setTimeout(() => setSavedAdminProfile(false), 3000);
+  };
+
   const handleSaveFirebase = (e) => {
     e.preventDefault();
     saveFirebaseConfig(fbConfig);
@@ -36,13 +69,107 @@ export default function SystemSettings() {
   };
 
   return (
-    <div className="p-6 space-y-6 max-w-4xl mx-auto">
+    <div className="p-4 md:p-6 space-y-6 max-w-4xl mx-auto">
       <div>
-        <h1 className="text-2xl font-black text-slate-900 uppercase">SYSTEM SETTINGS & TAX CONFIGURATION</h1>
-        <p className="text-xs text-slate-500 font-medium">Manage GST policies, 21-day credit period rules, and application parameters</p>
+        <h1 className="text-2xl font-black text-slate-900 uppercase">
+          SYSTEM SETTINGS & SECURITY
+        </h1>
+        <p className="text-xs text-slate-500 font-medium">
+          Manage Admin Profile, Passwords, GST policies, and application configuration
+        </p>
       </div>
 
-      {/* 1. GST & Tax Policy Configuration (Rule 9 & 11) */}
+      {/* 1. Admin Security & Profile Management */}
+      <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs space-y-4">
+        <h2 className="text-base font-black text-slate-900 uppercase flex items-center gap-2">
+          <Shield className="w-5 h-5 text-amber-600" />
+          ADMIN PROFILE & SECURITY SETTINGS
+        </h2>
+
+        <form onSubmit={handleSaveAdminProfile} className="space-y-4 text-xs">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="block font-bold text-slate-700 uppercase mb-1">
+                Admin Name
+              </label>
+              <input
+                type="text"
+                required
+                value={adminName}
+                onChange={(e) => setAdminName(e.target.value)}
+                className="w-full border border-slate-200 rounded-xl p-2.5 font-bold"
+              />
+            </div>
+
+            <div>
+              <label className="block font-bold text-slate-700 uppercase mb-1">
+                Admin Mobile Number
+              </label>
+              <input
+                type="tel"
+                required
+                value={adminMobile}
+                onChange={(e) => setAdminMobile(e.target.value)}
+                className="w-full border border-slate-200 rounded-xl p-2.5 font-bold"
+              />
+              <p className="text-[10px] text-amber-700 font-bold mt-1">
+                Default Password: {adminMobile ? adminMobile.slice(-4) : '2905'}
+              </p>
+            </div>
+
+            <div>
+              <label className="block font-bold text-slate-700 uppercase mb-1">
+                Admin Email
+              </label>
+              <input
+                type="email"
+                required
+                value={adminEmail}
+                onChange={(e) => setAdminEmail(e.target.value)}
+                className="w-full border border-slate-200 rounded-xl p-2.5 font-bold"
+              />
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3 pt-2">
+            <button
+              type="submit"
+              className="py-2.5 px-5 bg-amber-600 hover:bg-amber-700 text-white font-black rounded-xl text-xs shadow-md"
+            >
+              Save Admin Profile
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowPassModal(true)}
+              className="py-2.5 px-5 bg-slate-900 hover:bg-black text-amber-300 font-black rounded-xl text-xs flex items-center gap-1.5 shadow-md"
+            >
+              <KeyRound className="w-4 h-4" />
+              <span>Change Admin Password</span>
+            </button>
+
+            {savedAdminProfile && (
+              <span className="text-xs font-bold text-emerald-600 flex items-center gap-1">
+                <CheckCircle2 className="w-4 h-4" />
+                Profile Updated ✓
+              </span>
+            )}
+          </div>
+        </form>
+
+        {/* Master Password Notice */}
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-xs space-y-1">
+          <p className="font-extrabold text-amber-900 flex items-center gap-2">
+            <Lock className="w-4 h-4 text-amber-700" />
+            <span>Master Password Security (Non-Changeable):</span>
+          </p>
+          <p className="text-slate-600 pl-6">
+            Emergency Master Password <strong>Patel@2905</strong> ke dwara 15 galat attempts ke baad kisi bhi locked account ko unlock aur reset kiya ja sakta hai.
+          </p>
+        </div>
+      </div>
+
+      {/* 2. GST & Tax Policy Configuration */}
       <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs space-y-4">
         <h2 className="text-base font-black text-slate-900 uppercase flex items-center gap-2">
           <Percent className="w-5 h-5 text-emerald-600" />
@@ -69,54 +196,64 @@ export default function SystemSettings() {
                 type="number"
                 value={gstRate}
                 onChange={(e) => setGstRate(e.target.value)}
-                className="w-full border border-slate-200 rounded-xl p-2.5 font-black text-slate-900"
+                className="w-full border border-slate-200 rounded-xl p-2.5 font-bold"
               />
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block font-bold text-slate-700 uppercase mb-1">GST Mode</label>
+              <label className="block font-bold text-slate-700 uppercase mb-1">GST Calculation Mode</label>
               <select
                 value={gstMode}
                 onChange={(e) => setGstMode(e.target.value)}
                 className="w-full border border-slate-200 rounded-xl p-2.5 font-bold"
               >
-                <option value="Exclusive">Exclusive (Add GST on subtotal - Default)</option>
-                <option value="Inclusive">Inclusive (GST included in price)</option>
+                <option value="Exclusive">Exclusive (Tax added on top)</option>
+                <option value="Inclusive">Inclusive (Price includes Tax)</option>
               </select>
             </div>
 
             <div>
-              <label className="block font-bold text-slate-700 uppercase mb-1">Credit Period Policy (Days)</label>
+              <label className="block font-bold text-slate-700 uppercase mb-1">Default Credit Period (Days)</label>
               <input
                 type="number"
                 value={creditDays}
                 onChange={(e) => setCreditDays(e.target.value)}
-                className="w-full border border-slate-200 rounded-xl p-2.5 font-black text-slate-900"
+                className="w-full border border-slate-200 rounded-xl p-2.5 font-bold"
               />
             </div>
           </div>
 
           <button
             type="submit"
-            className="py-3 px-6 bg-emerald-700 hover:bg-emerald-800 text-white font-bold rounded-xl text-xs shadow-md"
+            className="py-3 px-6 bg-red-700 hover:bg-red-800 text-white font-bold rounded-xl text-xs shadow-md"
           >
-            SAVE TAX & CREDIT POLICY ✓
+            SAVE TAX & CREDIT POLICY
           </button>
         </form>
       </div>
 
-      {/* 2. Firebase Configuration Panel */}
+      {/* 3. Firebase Configuration */}
       <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs space-y-4">
         <h2 className="text-base font-black text-slate-900 uppercase flex items-center gap-2">
           <Flame className="w-5 h-5 text-orange-600" />
-          FIREBASE DATABASE PARAMETERS
+          FIREBASE CLOUD FIRESTORE CONFIG
         </h2>
 
-        <form onSubmit={handleSaveFirebase} className="space-y-3 text-xs">
+        <form onSubmit={handleSaveFirebase} className="space-y-4 text-xs">
           <div>
-            <label className="block font-bold text-slate-600 mb-1">Firebase Project ID</label>
+            <label className="block font-bold text-slate-700 uppercase mb-1">API Key</label>
+            <input
+              type="text"
+              value={fbConfig.apiKey}
+              onChange={(e) => setFbConfig({ ...fbConfig, apiKey: e.target.value })}
+              className="w-full border border-slate-200 rounded-xl p-2.5 font-mono text-xs"
+            />
+          </div>
+
+          <div>
+            <label className="block font-bold text-slate-700 uppercase mb-1">Project ID</label>
             <input
               type="text"
               value={fbConfig.projectId}
@@ -142,7 +279,7 @@ export default function SystemSettings() {
         </form>
       </div>
 
-      {/* Reset System Data */}
+      {/* 4. Reset System Data */}
       <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs flex justify-between items-center">
         <div>
           <p className="font-bold text-slate-800 text-xs">Reset System Data</p>
@@ -161,6 +298,12 @@ export default function SystemSettings() {
           Reset Data
         </button>
       </div>
+
+      {/* Change Password Modal */}
+      <ChangePasswordModal
+        isOpen={showPassModal}
+        onClose={() => setShowPassModal(false)}
+      />
     </div>
   );
 }
