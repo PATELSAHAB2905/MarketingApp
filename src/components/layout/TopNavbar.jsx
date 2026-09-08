@@ -10,7 +10,7 @@ export default function TopNavbar() {
   const [showPassModal, setShowPassModal] = useState(false);
 
   const handleLogout = () => {
-    if (window.confirm('Kya aap sure hain ki Logout karna chahte hain?')) {
+    if (window.confirm('Are you sure you want to log out?')) {
       logout();
     }
   };
@@ -70,7 +70,7 @@ export default function TopNavbar() {
             <button
               onClick={handleLogout}
               className="p-2 rounded-xl bg-red-950/60 hover:bg-red-950 border border-red-500/30 text-red-200 hover:text-white transition-colors flex items-center gap-1.5"
-              title="Logout from Application"
+              title="Logout"
             >
               <LogOut className="w-4 h-4" />
               <span className="hidden md:inline text-[11px] font-bold">Logout</span>

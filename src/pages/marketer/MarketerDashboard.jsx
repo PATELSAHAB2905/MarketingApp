@@ -266,7 +266,7 @@ export default function MarketerDashboard({ activeTab, setActiveTab }) {
 
               <button
                 onClick={() => {
-                  if (window.confirm('Kya aap sure hain ki Logout karna chahte hain?')) {
+                  if (window.confirm('Are you sure you want to log out?')) {
                     logout();
                   }
                 }}

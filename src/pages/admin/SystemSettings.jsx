@@ -28,7 +28,7 @@ export default function SystemSettings() {
   // Admin Profile Edit State
   const [adminName, setAdminName] = useState(adminProfile?.name || 'Patel Sahab Management');
   const [adminMobile, setAdminMobile] = useState(adminProfile?.mobile || '9826022905');
-  const [adminEmail, setAdminEmail] = useState(adminProfile?.email || 'admin@patelsahab.com');
+  const [adminEmail, setAdminEmail] = useState(adminProfile?.email || 'patelsahab2905@gmail.com');
   const [savedAdminProfile, setSavedAdminProfile] = useState(false);
 
   // GST & Policy states
@@ -47,7 +47,7 @@ export default function SystemSettings() {
     setCreditPolicy({
       creditPeriodDays: Number(creditDays),
     });
-    alert('GST & TAX CREDIT POLICY SAVED ✓');
+    alert('GST & Tax Credit Policy saved successfully ✓');
   };
 
   const handleSaveAdminProfile = (e) => {
@@ -75,7 +75,7 @@ export default function SystemSettings() {
           SYSTEM SETTINGS & SECURITY
         </h1>
         <p className="text-xs text-slate-500 font-medium">
-          Manage Admin Profile, Passwords, GST policies, and application configuration
+          Manage Admin Profile, Passwords, GST tax policies, and system parameters
         </p>
       </div>
 
@@ -112,14 +112,11 @@ export default function SystemSettings() {
                 onChange={(e) => setAdminMobile(e.target.value)}
                 className="w-full border border-slate-200 rounded-xl p-2.5 font-bold"
               />
-              <p className="text-[10px] text-amber-700 font-bold mt-1">
-                Default Password: {adminMobile ? adminMobile.slice(-4) : '2905'}
-              </p>
             </div>
 
             <div>
               <label className="block font-bold text-slate-700 uppercase mb-1">
-                Admin Email
+                Admin Gmail ID / Email
               </label>
               <input
                 type="email"
@@ -161,10 +158,10 @@ export default function SystemSettings() {
         <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-xs space-y-1">
           <p className="font-extrabold text-amber-900 flex items-center gap-2">
             <Lock className="w-4 h-4 text-amber-700" />
-            <span>Master Password Security (Non-Changeable):</span>
+            <span>Master Password Security (Immutable):</span>
           </p>
           <p className="text-slate-600 pl-6">
-            Emergency Master Password <strong>Patel@2905</strong> ke dwara 15 galat attempts ke baad kisi bhi locked account ko unlock aur reset kiya ja sakta hai.
+            The emergency Master Password <strong>Patel@2905</strong> can be used to unlock and reset any locked user account after 15 consecutive failed attempts.
           </p>
         </div>
       </div>

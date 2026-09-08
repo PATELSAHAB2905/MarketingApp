@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useAuth, MASTER_PASSWORD } from '../../context/AuthContext';
+import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
 import {
   Flame,
@@ -7,13 +7,12 @@ import {
   Smartphone,
   Lock,
   Unlock,
-  KeyRound,
   Eye,
   EyeOff,
   AlertTriangle,
   CheckCircle2,
   UserCheck,
-  Sparkles,
+  Mail,
 } from 'lucide-react';
 
 export default function LoginPage() {
@@ -35,8 +34,8 @@ export default function LoginPage() {
   const [marketerPassword, setMarketerPassword] = useState('');
   const [showMarketerPass, setShowMarketerPass] = useState(false);
 
-  // Admin Form State
-  const [adminIdentifier, setAdminIdentifier] = useState('admin');
+  // Admin Form State (Requires Gmail ID / Email + Password)
+  const [adminEmail, setAdminEmail] = useState('patelsahab2905@gmail.com');
   const [adminPassword, setAdminPassword] = useState('');
   const [showAdminPass, setShowAdminPass] = useState(false);
 
@@ -76,7 +75,7 @@ export default function LoginPage() {
     }
   };
 
-  // Handle Admin Login
+  // Handle Admin Login (Gmail ID + Password)
   const handleAdminSubmit = (e) => {
     e.preventDefault();
     setErrorMessage('');
@@ -85,7 +84,7 @@ export default function LoginPage() {
 
     const res = loginWithPassword({
       role: 'ADMIN',
-      usernameOrMobile: adminIdentifier,
+      adminEmail: adminEmail.trim(),
       password: adminPassword,
     });
 
@@ -123,7 +122,7 @@ export default function LoginPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-950 via-red-950 to-amber-950 flex flex-col justify-center items-center p-4 selection:bg-amber-500 selection:text-slate-950">
-      {/* Glow Orbs Background */}
+      {/* Background Glow Elements */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
         <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-red-600/10 rounded-full blur-3xl animate-pulse" />
         <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-amber-500/10 rounded-full blur-3xl" />
@@ -208,7 +207,7 @@ export default function LoginPage() {
                 </div>
                 <h3 className="font-black text-red-950 text-sm uppercase">ACCOUNT LOCKED</h3>
                 <p className="text-xs text-red-800 font-medium">
-                  15 galat password attempts ho chuke hain! Ise unlock karne ke liye Master Password dalein.
+                  Maximum 15 failed password attempts reached. Please enter the Master Password to unlock.
                 </p>
               </div>
 
@@ -238,11 +237,11 @@ export default function LoginPage() {
 
                 <div>
                   <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                    Naya Password Dalein (Optional)
+                    Set New Password (Optional)
                   </label>
                   <input
                     type="password"
-                    placeholder="Chhod denge toh default (last 4 digits) ho jayega"
+                    placeholder="Leave empty to reset to default password"
                     value={newPasswordAfterUnlock}
                     onChange={(e) => setNewPasswordAfterUnlock(e.target.value)}
                     className="w-full bg-slate-50 border border-slate-200 rounded-2xl py-3 px-4 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500"
@@ -265,7 +264,7 @@ export default function LoginPage() {
               <div>
                 <label className="block text-[11px] font-black uppercase text-slate-700 mb-1.5 flex items-center justify-between">
                   <span>Marketer Name / ID *</span>
-                  <span className="text-slate-400 font-semibold lowercase">select profile</span>
+                  <span className="text-slate-400 font-semibold lowercase">Select Your Name</span>
                 </label>
                 <div className="relative">
                   <select
@@ -278,7 +277,7 @@ export default function LoginPage() {
                   >
                     {marketers.map((m) => (
                       <option key={m.id} value={m.id}>
-                        {m.name} ({m.mobile || 'No Mobile'})
+                        {m.name}
                       </option>
                     ))}
                   </select>
@@ -289,11 +288,8 @@ export default function LoginPage() {
               </div>
 
               <div>
-                <label className="block text-[11px] font-black uppercase text-slate-700 mb-1.5 flex items-center justify-between">
-                  <span>Password *</span>
-                  <span className="text-amber-700 font-bold text-[10px]">
-                    1st Time: Last 4 digits of Mobile
-                  </span>
+                <label className="block text-[11px] font-black uppercase text-slate-700 mb-1.5">
+                  Password *
                 </label>
                 <div className="relative">
                   <input
@@ -314,25 +310,9 @@ export default function LoginPage() {
                 </div>
               </div>
 
-              {/* Password Help Hint */}
-              <div className="bg-amber-50/80 border border-amber-200/80 rounded-2xl p-3 text-[11px] text-amber-900 space-y-1">
-                <p className="font-bold flex items-center gap-1.5">
-                  <KeyRound className="w-3.5 h-3.5 text-amber-700" />
-                  <span>Password Hint:</span>
-                </p>
-                <p className="text-slate-600 pl-5">
-                  Pehli baar login ke liye aapke mobile number ke <strong>aakhiri 4 digits</strong> hi aapka password hain.
-                  {currentMarketer?.mobile && (
-                    <span className="block text-amber-800 font-extrabold mt-0.5">
-                      (Aapka default password: {currentMarketer.mobile.slice(-4)})
-                    </span>
-                  )}
-                </p>
-              </div>
-
               {attempts > 0 && attempts < 15 && (
                 <div className="text-[11px] text-red-600 font-bold text-center">
-                  ⚠️ Galat attempts: {attempts}/15 ({15 - attempts} remaining before lock)
+                  ⚠️ Invalid attempts: {attempts} of 15 ({15 - attempts} remaining before lock)
                 </div>
               )}
 
@@ -342,32 +322,34 @@ export default function LoginPage() {
                 className="w-full bg-gradient-to-r from-red-700 via-red-800 to-red-900 hover:from-red-800 hover:to-red-950 text-white font-black py-3.5 px-4 rounded-2xl text-xs uppercase tracking-wider shadow-lg shadow-red-700/25 active:scale-98 transition-all flex items-center justify-center gap-2"
               >
                 <UserCheck className="w-4 h-4" />
-                <span>{loading ? 'Logging in...' : 'Login to Marketer Portal'}</span>
+                <span>{loading ? 'Authenticating...' : 'Login to Marketer Portal'}</span>
               </button>
             </form>
           ) : (
-            /* 👑 ADMIN LOGIN FORM */
+            /* 👑 ADMIN LOGIN FORM (Gmail ID + Password) */
             <form onSubmit={handleAdminSubmit} className="space-y-4">
               <div>
                 <label className="block text-[11px] font-black uppercase text-slate-700 mb-1.5">
-                  Admin ID / Mobile *
+                  Admin Gmail ID / Email *
                 </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="admin or Registered Mobile"
-                  value={adminIdentifier}
-                  onChange={(e) => setAdminIdentifier(e.target.value)}
-                  className="w-full bg-slate-50 border border-slate-200 focus:border-amber-600 rounded-2xl py-3 px-4 text-xs font-bold text-slate-900 focus:outline-none focus:ring-4 focus:ring-amber-500/10"
-                />
+                <div className="relative">
+                  <input
+                    type="email"
+                    required
+                    placeholder="e.g. patelsahab2905@gmail.com"
+                    value={adminEmail}
+                    onChange={(e) => setAdminEmail(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 focus:border-amber-600 rounded-2xl py-3 px-4 text-xs font-bold text-slate-900 pr-10 focus:outline-none focus:ring-4 focus:ring-amber-500/10"
+                  />
+                  <div className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400">
+                    <Mail className="w-4 h-4" />
+                  </div>
+                </div>
               </div>
 
               <div>
-                <label className="block text-[11px] font-black uppercase text-slate-700 mb-1.5 flex items-center justify-between">
-                  <span>Admin Password *</span>
-                  <span className="text-amber-700 font-bold text-[10px]">
-                    Default: {adminProfile?.mobile ? adminProfile.mobile.slice(-4) : '2905'}
-                  </span>
+                <label className="block text-[11px] font-black uppercase text-slate-700 mb-1.5">
+                  Admin Password *
                 </label>
                 <div className="relative">
                   <input
@@ -388,20 +370,9 @@ export default function LoginPage() {
                 </div>
               </div>
 
-              {/* Password Help Hint */}
-              <div className="bg-amber-50/80 border border-amber-200/80 rounded-2xl p-3 text-[11px] text-amber-900 space-y-1">
-                <p className="font-bold flex items-center gap-1.5">
-                  <Shield className="w-3.5 h-3.5 text-amber-700" />
-                  <span>Admin Access Security:</span>
-                </p>
-                <p className="text-slate-600 pl-5">
-                  Default Admin Password: <strong>{adminProfile?.mobile ? adminProfile.mobile.slice(-4) : '2905'}</strong> (Admin Mobile ke last 4 digits).
-                </p>
-              </div>
-
               {attempts > 0 && attempts < 15 && (
                 <div className="text-[11px] text-red-600 font-bold text-center">
-                  ⚠️ Galat attempts: {attempts}/15 ({15 - attempts} remaining before lock)
+                  ⚠️ Invalid attempts: {attempts} of 15 ({15 - attempts} remaining before lock)
                 </div>
               )}
 
@@ -411,16 +382,16 @@ export default function LoginPage() {
                 className="w-full bg-gradient-to-r from-amber-600 via-amber-700 to-amber-800 hover:from-amber-700 hover:to-amber-900 text-white font-black py-3.5 px-4 rounded-2xl text-xs uppercase tracking-wider shadow-lg shadow-amber-600/25 active:scale-98 transition-all flex items-center justify-center gap-2"
               >
                 <Shield className="w-4 h-4" />
-                <span>{loading ? 'Verifying Admin...' : 'Login to Admin Panel'}</span>
+                <span>{loading ? 'Authenticating Admin...' : 'Login to Admin Panel'}</span>
               </button>
             </form>
           )}
 
-          {/* Footer Security Note (NO signup, NO forgot password) */}
+          {/* Footer Security Note */}
           <div className="pt-2 text-center border-t border-slate-100">
             <p className="text-[11px] text-slate-400 font-medium flex items-center justify-center gap-1.5">
               <Lock className="w-3 h-3 text-slate-400" />
-              <span>Authorized personnel only • Secure Encrypted Session</span>
+              <span>Authorized Personnel Only • Secure Encrypted Session</span>
             </p>
           </div>
         </div>

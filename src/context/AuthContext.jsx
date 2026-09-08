@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { setDocument, getDocument } from '../services/firestoreService';
+import { setDocument } from '../services/firestoreService';
 
 const AuthContext = createContext();
 
@@ -11,8 +11,9 @@ export const DEFAULT_ADMIN = {
   id: 'admin-1',
   name: 'Patel Sahab Management',
   role: 'ADMIN',
-  email: 'admin@patelsahab.com',
-  mobile: '9826022905', // Default password will be '2905'
+  email: 'patelsahab2905@gmail.com', // Admin Gmail ID
+  secondaryEmail: 'admin@patelsahab.com',
+  mobile: '9826022905',
   username: 'admin',
 };
 
@@ -131,7 +132,7 @@ export const AuthProvider = ({ children }) => {
   /**
    * Login with password
    */
-  const loginWithPassword = ({ role, marketerId, usernameOrMobile, password, marketersList = [] }) => {
+  const loginWithPassword = ({ role, marketerId, adminEmail, password, marketersList = [] }) => {
     const cleanPass = String(password || '').trim();
 
     if (role === 'ADMIN') {
@@ -143,26 +144,25 @@ export const AuthProvider = ({ children }) => {
           success: false,
           isLocked: true,
           attempts: currentAttempts,
-          error: 'Security Lock: 15 galat attempts ho chuke hain! Kripya Master Password se unlock karein.',
+          error: 'Security Lock: Maximum 15 failed attempts reached! Please unlock using the Master Password.',
         };
       }
 
-      const inputId = String(usernameOrMobile || '').trim().toLowerCase();
-      const adminMobileDigits = String(adminProfile.mobile).replace(/\D/g, '');
-      const inputDigits = inputId.replace(/\D/g, '');
+      const inputEmail = String(adminEmail || '').trim().toLowerCase();
+      const validAdminEmails = [
+        (adminProfile.email || '').toLowerCase(),
+        (adminProfile.secondaryEmail || '').toLowerCase(),
+        'admin@patelsahab.com',
+        'patelsahab2905@gmail.com',
+        'admin',
+      ];
 
-      // Check identifier match (username, email, or mobile)
-      const isIdentifierMatch =
-        inputId === 'admin' ||
-        inputId === adminProfile.email.toLowerCase() ||
-        (inputDigits && adminMobileDigits.endsWith(inputDigits));
-
-      if (!isIdentifierMatch && inputId.length > 0) {
+      if (!validAdminEmails.includes(inputEmail) && inputEmail.length > 0) {
         return {
           success: false,
           isLocked: false,
           attempts: currentAttempts,
-          error: 'Galat Admin ID / Mobile Number! Sahi Admin credentials dalein.',
+          error: 'Invalid Admin Gmail ID or Email address. Please enter a valid registered Admin email.',
         };
       }
 
@@ -186,36 +186,20 @@ export const AuthProvider = ({ children }) => {
           isLocked: attempts >= 15,
           attempts,
           remainingAttempts: Math.max(0, 15 - attempts),
-          error: `Galat Password! Attempt ${attempts}/15.${attempts >= 15 ? ' Account Lock ho gaya hai.' : ''}`,
+          error: `Incorrect Password! Attempt ${attempts} of 15.${attempts >= 15 ? ' Account is now locked.' : ''}`,
         };
       }
     } else {
       // MARKETER LOGIN
-      // Find marketer by ID or Mobile
-      let targetMarketer = null;
       const allMarketers = marketersList.length > 0 ? marketersList : Object.values(INITIAL_MARKETER_ROSTER);
-
-      if (marketerId) {
-        targetMarketer = allMarketers.find((m) => m.id === marketerId);
-      } else if (usernameOrMobile) {
-        const inputStr = String(usernameOrMobile).trim().toLowerCase();
-        const inputDigits = inputStr.replace(/\D/g, '');
-        targetMarketer = allMarketers.find((m) => {
-          const mDigits = String(m.mobile || '').replace(/\D/g, '');
-          return (
-            m.id.toLowerCase() === inputStr ||
-            m.name.toLowerCase() === inputStr ||
-            (inputDigits.length >= 4 && mDigits.endsWith(inputDigits))
-          );
-        });
-      }
+      const targetMarketer = allMarketers.find((m) => m.id === marketerId);
 
       if (!targetMarketer) {
         return {
           success: false,
           isLocked: false,
           attempts: 0,
-          error: 'Marketer ID ya Mobile number nahi mila! Kripya list se apna naam chunein.',
+          error: 'Marketer profile not found. Please select your name from the list.',
         };
       }
 
@@ -228,7 +212,7 @@ export const AuthProvider = ({ children }) => {
           isLocked: true,
           attempts: currentAttempts,
           targetMarketer,
-          error: 'Security Lock: 15 galat attempts ho chuke hain! Kripya Master Password se unlock karein.',
+          error: 'Security Lock: Maximum 15 failed attempts reached! Please unlock using the Master Password.',
         };
       }
 
@@ -253,7 +237,7 @@ export const AuthProvider = ({ children }) => {
           attempts,
           targetMarketer,
           remainingAttempts: Math.max(0, 15 - attempts),
-          error: `Galat Password! Attempt ${attempts}/15.${attempts >= 15 ? ' Account Lock ho gaya hai.' : ''}`,
+          error: `Incorrect Password! Attempt ${attempts} of 15.${attempts >= 15 ? ' Account is now locked.' : ''}`,
         };
       }
     }
@@ -266,7 +250,7 @@ export const AuthProvider = ({ children }) => {
     if (String(masterPassword || '').trim() !== MASTER_PASSWORD) {
       return {
         success: false,
-        error: 'Galat Master Password! Kripya sahi Master Password dalein.',
+        error: 'Invalid Master Password! Please enter the correct Master Password.',
       };
     }
 
@@ -289,7 +273,7 @@ export const AuthProvider = ({ children }) => {
 
     return {
       success: true,
-      message: 'Account successfully unlocked! Password default (Mobile ke last 4 digit) par reset ho gaya hai.',
+      message: 'Account successfully unlocked! Password has been reset.',
     };
   };
 
@@ -301,13 +285,13 @@ export const AuthProvider = ({ children }) => {
     const cleanNew = String(newPassword || '').trim();
 
     if (!cleanNew || cleanNew.length < 4) {
-      return { success: false, error: 'Naya password kam se kam 4 characters ka hona chahiye!' };
+      return { success: false, error: 'New password must be at least 4 characters long.' };
     }
 
     const expectedCurrent = getEffectivePassword(userId, userMobile);
 
     if (cleanCurrent !== expectedCurrent && cleanCurrent !== MASTER_PASSWORD) {
-      return { success: false, error: 'Current password galat hai!' };
+      return { success: false, error: 'Current password is incorrect.' };
     }
 
     setUserPasswords((prev) => ({
@@ -322,7 +306,7 @@ export const AuthProvider = ({ children }) => {
       updatedAt: new Date().toISOString(),
     }).catch(() => {});
 
-    return { success: true, message: 'Password successfully change ho gaya hai!' };
+    return { success: true, message: 'Password updated successfully!' };
   };
 
   /**
@@ -335,7 +319,7 @@ export const AuthProvider = ({ children }) => {
       return next;
     });
     resetAttempts(marketerId);
-    return { success: true, message: 'Marketer password default (last 4 digits) par reset ho gaya!' };
+    return { success: true, message: 'Marketer password has been reset to default (last 4 digits of mobile).' };
   };
 
   const logout = () => {

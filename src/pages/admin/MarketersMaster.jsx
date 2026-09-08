@@ -79,11 +79,11 @@ export default function MarketersMaster() {
     const last4 = mkt.mobile ? mkt.mobile.slice(-4) : '1234';
     if (
       window.confirm(
-        `Kya aap ${mkt.name} ka password reset karna chahte hain?\nReset hone ke baad unka password "${last4}" (mobile ke last 4 digit) ho jayega.`
+        `Are you sure you want to reset the password for ${mkt.name}?\nAfter reset, the default password will be "${last4}" (last 4 digits of registered mobile).`
       )
     ) {
       adminResetMarketerPassword(mkt.id);
-      alert(`Password successfully reset! New password: ${last4}`);
+      alert(`Password has been reset successfully! Default password is: ${last4}`);
     }
   };
 
@@ -96,7 +96,7 @@ export default function MarketersMaster() {
             MARKETERS MASTER DATABASE
           </h1>
           <p className="text-xs text-slate-500 font-medium">
-            Field sales executive profiles, mobile numbers & password management
+            Field sales executive profiles, contact numbers & account management
           </p>
         </div>
         <button
@@ -165,11 +165,11 @@ export default function MarketersMaster() {
 
                 {/* Password Info Badge */}
                 <div className="flex items-center justify-between pt-1 border-t border-slate-200/60 text-[11px]">
-                  <span className="text-amber-800 font-bold flex items-center gap-1">
+                  <span className="text-slate-600 font-bold flex items-center gap-1">
                     <KeyRound className="w-3.5 h-3.5 text-amber-600" />
                     Initial Password:
                   </span>
-                  <span className="bg-amber-100 text-amber-900 font-black px-2 py-0.5 rounded-lg border border-amber-300">
+                  <span className="bg-amber-100 text-amber-950 font-black px-2 py-0.5 rounded-lg border border-amber-300">
                     {defaultPass}
                   </span>
                 </div>
@@ -188,7 +188,7 @@ export default function MarketersMaster() {
                 <button
                   onClick={() => handleResetPassword(m)}
                   className="py-2 px-3 bg-red-50 hover:bg-red-100 text-red-700 font-extrabold text-[11px] rounded-xl border border-red-200 flex items-center justify-center gap-1.5 transition-colors"
-                  title="Reset password to default (last 4 digits)"
+                  title="Reset password to default (last 4 digits of mobile)"
                 >
                   <RotateCcw className="w-3.5 h-3.5 text-red-600" />
                   <span>Reset Pass</span>
@@ -249,8 +249,8 @@ export default function MarketersMaster() {
                   className="w-full border border-slate-200 rounded-xl p-3 font-bold text-sm tracking-wider focus:outline-none focus:ring-2 focus:ring-red-600"
                 />
                 {mobile.length >= 4 && (
-                  <p className="text-[11px] text-amber-800 font-bold mt-1 bg-amber-50 p-2 rounded-lg border border-amber-200">
-                    🔑 Is Marketer ka initial password: <strong>{mobile.slice(-4)}</strong> hoga.
+                  <p className="text-[11px] text-amber-900 font-bold mt-1 bg-amber-50 p-2 rounded-lg border border-amber-200">
+                    🔑 Initial login password for this marketer will be: <strong>{mobile.slice(-4)}</strong>.
                   </p>
                 )}
               </div>

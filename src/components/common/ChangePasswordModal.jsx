@@ -23,12 +23,12 @@ export default function ChangePasswordModal({ isOpen, onClose }) {
     setSuccess('');
 
     if (newPass.length < 4) {
-      setError('Naya password kam se kam 4 characters ka hona chahiye!');
+      setError('New password must be at least 4 characters long.');
       return;
     }
 
     if (newPass !== confirmPass) {
-      setError('New password aur Confirm password match nahi ho rahe hain!');
+      setError('New password and confirm password do not match.');
       return;
     }
 
@@ -96,7 +96,7 @@ export default function ChangePasswordModal({ isOpen, onClose }) {
               <input
                 type={showCurrent ? 'text' : 'password'}
                 required
-                placeholder="Purana password dalein"
+                placeholder="Enter current password"
                 value={currentPass}
                 onChange={(e) => setCurrentPass(e.target.value)}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 pr-10 font-bold focus:outline-none focus:ring-2 focus:ring-red-600"
@@ -109,9 +109,6 @@ export default function ChangePasswordModal({ isOpen, onClose }) {
                 {showCurrent ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
             </div>
-            <p className="text-[10px] text-slate-400 mt-1">
-              Hint: Agar pehle change nahi kiya, toh mobile ke aakhiri 4 digits dalein.
-            </p>
           </div>
 
           <div>
@@ -122,7 +119,7 @@ export default function ChangePasswordModal({ isOpen, onClose }) {
               <input
                 type={showNew ? 'text' : 'password'}
                 required
-                placeholder="Naya password dalein (min 4 characters)"
+                placeholder="Enter new password (min 4 characters)"
                 value={newPass}
                 onChange={(e) => setNewPass(e.target.value)}
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 pr-10 font-bold focus:outline-none focus:ring-2 focus:ring-red-600"
@@ -144,7 +141,7 @@ export default function ChangePasswordModal({ isOpen, onClose }) {
             <input
               type="password"
               required
-              placeholder="Naya password dobara dalein"
+              placeholder="Re-enter new password"
               value={confirmPass}
               onChange={(e) => setConfirmPass(e.target.value)}
               className="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 font-bold focus:outline-none focus:ring-2 focus:ring-red-600"
