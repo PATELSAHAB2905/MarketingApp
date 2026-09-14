@@ -5,7 +5,7 @@ import { MessageSquare, X } from 'lucide-react';
 
 export default function MarketFeedbackForm({ onClose }) {
   const { currentUser } = useAuth();
-  const { getFormattedDate, getFormattedTime, getTodayMarket, addMarketFeedback } = useData();
+  const { getFormattedDate, getFormattedTime, getTodayMarket, addMarketFeedback, isMarketerDayActive } = useData();
 
   const todayDate = getFormattedDate();
   const todayMarket = getTodayMarket(currentUser?.id, todayDate);
@@ -17,6 +17,12 @@ export default function MarketFeedbackForm({ onClose }) {
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    const isDayActive = isMarketerDayActive ? isMarketerDayActive(currentUser?.id) : true;
+    if (currentUser?.role !== 'ADMIN' && !isDayActive) {
+      alert('Your workday has not started.\n\nPlease submit Start My Day first.');
+      return;
+    }
+
     setSubmitting(true);
     setTimeout(() => {
       addMarketFeedback({

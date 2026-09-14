@@ -5,7 +5,7 @@ import { UserPlus, X, MapPin, CheckCircle2 } from 'lucide-react';
 
 export default function NewCustomerForm({ onClose, onCreated }) {
   const { currentUser } = useAuth();
-  const { markets, getFormattedDate, getTodayMarket, addNewShop } = useData();
+  const { markets, getFormattedDate, getTodayMarket, addNewShop, isMarketerDayActive } = useData();
 
   const todayDate = getFormattedDate();
   const todayMarket = getTodayMarket(currentUser?.id, todayDate);
@@ -22,6 +22,12 @@ export default function NewCustomerForm({ onClose, onCreated }) {
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    const isDayActive = isMarketerDayActive ? isMarketerDayActive(currentUser?.id) : true;
+    if (currentUser?.role !== 'ADMIN' && !isDayActive) {
+      alert('Your workday has not started.\n\nPlease submit Start My Day first.');
+      return;
+    }
+
     if (!name || !owner || !mobile) {
       alert('Please fill shop name, owner name and mobile number');
       return;

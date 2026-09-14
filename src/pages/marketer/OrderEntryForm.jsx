@@ -7,7 +7,7 @@ import { ArrowLeft, Plus, Trash2, ShoppingBag, X, CheckCircle2, History, AlertTr
 
 export default function OrderEntryForm({ shop, editingOrder, onClose, onOrderSubmitted }) {
   const { currentUser } = useAuth();
-  const { products, shops, orders, gstConfig, getFormattedDate, getFormattedTime, getTodayMarket, marketRoutes, addOrder, updateOrder, updateOrderSyncStatus } = useData();
+  const { products, shops, orders, gstConfig, getFormattedDate, getFormattedTime, getTodayMarket, marketRoutes, addOrder, updateOrder, updateOrderSyncStatus, isMarketerDayActive } = useData();
 
   const [selectedShopId, setSelectedShopId] = useState(
     editingOrder ? editingOrder.shopId : (shop ? shop.id : (shops[0]?.id || ''))
@@ -179,6 +179,13 @@ export default function OrderEntryForm({ shop, editingOrder, onClose, onOrderSub
   // Final Order Submission
   // Final Order Submission
   const handleFinalSubmit = () => {
+    const isDayActive = isMarketerDayActive ? isMarketerDayActive(currentUser?.id) : true;
+    if (currentUser?.role !== 'ADMIN' && !isDayActive) {
+      alert('Your workday has not started.\n\nPlease submit Start My Day first.');
+      setShowReviewModal(false);
+      return;
+    }
+
     if (!targetShop) {
       alert('Please select a valid shop');
       return;

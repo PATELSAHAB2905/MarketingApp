@@ -5,7 +5,7 @@ import { RotateCcw, AlertTriangle, X, CheckCircle2, Edit } from 'lucide-react';
 
 export default function ReturnForm({ shop, editingReturn = null, onClose, onReturnSubmitted }) {
   const { currentUser } = useAuth();
-  const { products, shops, getFormattedDate, getFormattedTime, getTodayMarket, addReturn, updateReturn } = useData();
+  const { products, shops, getFormattedDate, getFormattedTime, getTodayMarket, addReturn, updateReturn, isMarketerDayActive } = useData();
 
   const [selectedShopId, setSelectedShopId] = useState(
     editingReturn?.shopId || (shop ? shop.id : (shops[0]?.id || ''))
@@ -59,6 +59,12 @@ export default function ReturnForm({ shop, editingReturn = null, onClose, onRetu
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    const isDayActive = isMarketerDayActive ? isMarketerDayActive(currentUser?.id) : true;
+    if (currentUser?.role !== 'ADMIN' && !isDayActive) {
+      alert('Your workday has not started.\n\nPlease submit Start My Day first.');
+      return;
+    }
+
     if (!targetShop) return;
     if (quantity <= 0) {
       alert('Please enter return quantity (KG)');

@@ -5,7 +5,7 @@ import { Clock, X, Calendar } from 'lucide-react';
 
 export default function FollowUpForm({ shop, onClose, onSaved }) {
   const { currentUser } = useAuth();
-  const { shops, getFormattedDate, getFormattedTime, getTodayMarket, addFollowup } = useData();
+  const { shops, getFormattedDate, getFormattedTime, getTodayMarket, addFollowup, isMarketerDayActive } = useData();
 
   const [selectedShopId, setSelectedShopId] = useState(shop ? shop.id : (shops[0]?.id || ''));
   const targetShop = shops.find((s) => s.id === selectedShopId) || shop || shops[0];
@@ -22,6 +22,12 @@ export default function FollowUpForm({ shop, onClose, onSaved }) {
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    const isDayActive = isMarketerDayActive ? isMarketerDayActive(currentUser?.id) : true;
+    if (currentUser?.role !== 'ADMIN' && !isDayActive) {
+      alert('Your workday has not started.\n\nPlease submit Start My Day first.');
+      return;
+    }
+
     if (!targetShop) return;
 
     setSubmitting(true);

@@ -152,9 +152,9 @@ export default function MarketerDashboard({ activeTab, setActiveTab }) {
   const requireActiveDay = (actionFn) => {
     if (!isDayActive) {
       if (isDayEnded) {
-        alert("Your day has ended. Please click 'START MY DAY AGAIN' to open a new session for further field operations.");
+        alert("Your workday has ended.\n\nPlease submit Start My Day first.");
       } else {
-        alert("Please complete 'START MY DAY' first to begin field operations.");
+        alert("Your workday has not started.\n\nPlease submit Start My Day first.");
       }
       setActiveModal('checkin');
       return;
@@ -527,39 +527,41 @@ export default function MarketerDashboard({ activeTab, setActiveTab }) {
 
       {/* Session State Banner (Gating / Status Reminder) */}
       {!todayCheckIn ? (
-        <div className="bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-red-500/20 border border-amber-400/40 rounded-2xl p-3.5 flex items-center justify-between text-amber-950 text-xs shadow-xs">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-amber-500 text-slate-950 flex items-center justify-center font-black">
-              <Lock className="w-4 h-4" />
+        <div className="bg-gradient-to-r from-red-800 via-red-700 to-amber-800 text-white rounded-2xl p-4 flex items-center justify-between shadow-lg border border-red-600/40">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center font-black flex-shrink-0">
+              <Lock className="w-5 h-5 text-amber-200" />
             </div>
             <div>
-              <p className="font-black text-amber-950 uppercase text-[11px]">Field Work Locked</p>
-              <p className="text-[10px] text-amber-900 font-medium">Please tap START MY DAY to unlock visits, orders & collections.</p>
+              <p className="font-black text-amber-200 uppercase text-xs tracking-wide">Workday Not Started</p>
+              <p className="text-xs text-white font-semibold mt-0.5">Please submit Start My Day before making any entry.</p>
             </div>
           </div>
           <button
             onClick={() => setActiveModal('checkin')}
-            className="py-2 px-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-black rounded-xl text-[11px] shadow-sm active:scale-95 transition-all flex-shrink-0"
+            className="py-2.5 px-4 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-500 hover:to-amber-600 text-slate-950 font-black rounded-xl text-xs shadow-md active:scale-95 transition-all flex-shrink-0 flex items-center gap-1.5"
           >
-            START DAY
+            <Play className="w-3.5 h-3.5 fill-slate-950" />
+            <span>START MY DAY</span>
           </button>
         </div>
       ) : isDayEnded ? (
-        <div className="bg-slate-100 border border-slate-300 rounded-2xl p-3.5 flex items-center justify-between text-slate-800 text-xs shadow-xs">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-slate-300 text-slate-700 flex items-center justify-center font-black">
-              <CheckCircle2 className="w-4 h-4 text-slate-700" />
+        <div className="bg-slate-900 border border-slate-700 text-white rounded-2xl p-4 flex items-center justify-between shadow-md">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-slate-800 text-amber-400 flex items-center justify-center font-black flex-shrink-0">
+              <Lock className="w-5 h-5 text-amber-400" />
             </div>
             <div>
-              <p className="font-black text-slate-900 uppercase text-[11px]">Day Session Ended ({todayCheckIn?.endTime || 'Evening'})</p>
-              <p className="text-[10px] text-slate-600 font-medium">Need to log late orders or collections? Start another session.</p>
+              <p className="font-black text-amber-300 uppercase text-xs tracking-wide">Day Session Ended ({todayCheckIn?.endTime || 'Evening'})</p>
+              <p className="text-xs text-slate-200 font-semibold mt-0.5">Please submit Start My Day before making any entry.</p>
             </div>
           </div>
           <button
             onClick={() => setActiveModal('checkin')}
-            className="py-2 px-3 bg-slate-900 hover:bg-slate-800 text-amber-300 font-black rounded-xl text-[11px] shadow-sm active:scale-95 transition-all flex-shrink-0"
+            className="py-2.5 px-4 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-500 text-slate-950 font-black rounded-xl text-xs shadow-md active:scale-95 transition-all flex-shrink-0 flex items-center gap-1.5"
           >
-            START AGAIN
+            <Play className="w-3.5 h-3.5 fill-slate-950" />
+            <span>START MY DAY</span>
           </button>
         </div>
       ) : null}
@@ -568,8 +570,16 @@ export default function MarketerDashboard({ activeTab, setActiveTab }) {
       <div className="grid grid-cols-2 gap-3">
         <button
           onClick={() => requireActiveDay(() => setActiveTab('shops'))}
-          className="bg-gradient-to-br from-red-700 to-red-800 hover:from-red-800 hover:to-red-900 text-white p-4 rounded-2xl shadow-md font-extrabold text-sm flex flex-col items-center justify-center gap-2 active:scale-95 transition-all border border-red-600"
+          className={`relative bg-gradient-to-br from-red-700 to-red-800 hover:from-red-800 hover:to-red-900 text-white p-4 rounded-2xl shadow-md font-extrabold text-sm flex flex-col items-center justify-center gap-2 active:scale-95 transition-all border border-red-600 ${
+            !isDayActive ? 'opacity-85' : ''
+          }`}
         >
+          {!isDayActive && (
+            <div className="absolute top-2.5 right-2.5 bg-black/40 text-amber-300 px-1.5 py-0.5 rounded-md text-[9px] font-black flex items-center gap-0.5">
+              <Lock className="w-2.5 h-2.5" />
+              <span>LOCKED</span>
+            </div>
+          )}
           <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center">
             <Store className="w-6 h-6 text-amber-300" />
           </div>
@@ -583,8 +593,16 @@ export default function MarketerDashboard({ activeTab, setActiveTab }) {
               setActiveModal('order');
             });
           }}
-          className="bg-gradient-to-br from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white p-4 rounded-2xl shadow-md font-extrabold text-sm flex flex-col items-center justify-center gap-2 active:scale-95 transition-all border border-amber-500"
+          className={`relative bg-gradient-to-br from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white p-4 rounded-2xl shadow-md font-extrabold text-sm flex flex-col items-center justify-center gap-2 active:scale-95 transition-all border border-amber-500 ${
+            !isDayActive ? 'opacity-85' : ''
+          }`}
         >
+          {!isDayActive && (
+            <div className="absolute top-2.5 right-2.5 bg-black/40 text-amber-200 px-1.5 py-0.5 rounded-md text-[9px] font-black flex items-center gap-0.5">
+              <Lock className="w-2.5 h-2.5" />
+              <span>LOCKED</span>
+            </div>
+          )}
           <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center">
             <PlusCircle className="w-6 h-6 text-amber-200" />
           </div>
@@ -593,8 +611,16 @@ export default function MarketerDashboard({ activeTab, setActiveTab }) {
 
         <button
           onClick={() => requireActiveDay(() => setActiveModal('collection'))}
-          className="bg-gradient-to-br from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white p-4 rounded-2xl shadow-md font-extrabold text-sm flex flex-col items-center justify-center gap-2 active:scale-95 transition-all border border-emerald-500"
+          className={`relative bg-gradient-to-br from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white p-4 rounded-2xl shadow-md font-extrabold text-sm flex flex-col items-center justify-center gap-2 active:scale-95 transition-all border border-emerald-500 ${
+            !isDayActive ? 'opacity-85' : ''
+          }`}
         >
+          {!isDayActive && (
+            <div className="absolute top-2.5 right-2.5 bg-black/40 text-emerald-200 px-1.5 py-0.5 rounded-md text-[9px] font-black flex items-center gap-0.5">
+              <Lock className="w-2.5 h-2.5" />
+              <span>LOCKED</span>
+            </div>
+          )}
           <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center">
             <IndianRupee className="w-6 h-6 text-emerald-200" />
           </div>
@@ -603,8 +629,16 @@ export default function MarketerDashboard({ activeTab, setActiveTab }) {
 
         <button
           onClick={() => requireActiveDay(() => setActiveModal('return'))}
-          className="bg-gradient-to-br from-slate-800 to-slate-900 hover:from-slate-900 hover:to-black text-white p-4 rounded-2xl shadow-md font-extrabold text-sm flex flex-col items-center justify-center gap-2 active:scale-95 transition-all border border-slate-700"
+          className={`relative bg-gradient-to-br from-slate-800 to-slate-900 hover:from-slate-900 hover:to-black text-white p-4 rounded-2xl shadow-md font-extrabold text-sm flex flex-col items-center justify-center gap-2 active:scale-95 transition-all border border-slate-700 ${
+            !isDayActive ? 'opacity-85' : ''
+          }`}
         >
+          {!isDayActive && (
+            <div className="absolute top-2.5 right-2.5 bg-black/40 text-amber-300 px-1.5 py-0.5 rounded-md text-[9px] font-black flex items-center gap-0.5">
+              <Lock className="w-2.5 h-2.5" />
+              <span>LOCKED</span>
+            </div>
+          )}
           <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center">
             <RotateCcw className="w-6 h-6 text-amber-400" />
           </div>

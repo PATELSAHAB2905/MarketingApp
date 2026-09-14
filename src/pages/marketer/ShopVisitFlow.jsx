@@ -30,7 +30,7 @@ export default function ShopVisitFlow({
   onOpenFollowup,
 }) {
   const { currentUser } = useAuth();
-  const { getFormattedDate, getFormattedTime, getTodayMarket, addShopVisit } = useData();
+  const { getFormattedDate, getFormattedTime, getTodayMarket, addShopVisit, isMarketerDayActive } = useData();
 
   const [visitStarted, setVisitStarted] = useState(false);
   const [visitTime, setVisitTime] = useState(null);
@@ -109,11 +109,24 @@ export default function ShopVisitFlow({
   };
 
   const handleStartVisit = () => {
+    const isDayActive = isMarketerDayActive ? isMarketerDayActive(currentUser?.id) : true;
+    if (currentUser?.role !== 'ADMIN' && !isDayActive) {
+      alert('Your workday has not started.\n\nPlease submit Start My Day first.');
+      onClose();
+      return;
+    }
     setVisitTime(getFormattedTime());
     setVisitStarted(true);
   };
 
   const handleFinishVisit = () => {
+    const isDayActive = isMarketerDayActive ? isMarketerDayActive(currentUser?.id) : true;
+    if (currentUser?.role !== 'ADMIN' && !isDayActive) {
+      alert('Your workday has not started.\n\nPlease submit Start My Day first.');
+      onClose();
+      return;
+    }
+
     setSubmitting(true);
     setTimeout(() => {
       addShopVisit({
