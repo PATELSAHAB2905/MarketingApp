@@ -176,13 +176,18 @@ export default function CollectionsHandover() {
                           ₹{(c.remainingOutstanding != null ? c.remainingOutstanding : (c.previousOutstanding || 0) - (c.amount || 0)).toLocaleString('en-IN')}
                         </td>
                         <td className="p-3.5 align-middle text-center">
-                          {c.slipPhoto ? (
+                          {(c.slipPhotoUrl || c.slipPhoto) ? (
                             <button
-                              onClick={() => setPreviewPhoto({ url: c.slipPhoto, title: `${c.shopName} - Slip Proof` })}
+                              onClick={() => setPreviewPhoto({ url: c.slipPhotoUrl || c.slipPhoto, title: `${c.shopName} - Slip Proof` })}
                               className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-xl text-[10px] font-bold shadow-xs transition-all"
                             >
                               <Camera className="w-3.5 h-3.5 text-emerald-600" />
                               <span>View Slip</span>
+                              {c.slipCompressedSizeKb ? (
+                                <span className="ml-1 text-[9px] bg-emerald-200 text-emerald-950 px-1 py-0.2 rounded font-extrabold">
+                                  {c.slipCompressedSizeKb} KB
+                                </span>
+                              ) : null}
                             </button>
                           ) : (
                             <span className="text-[10px] text-slate-400 italic">No Photo</span>

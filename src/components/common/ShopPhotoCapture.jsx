@@ -9,88 +9,17 @@ import {
   Trash2,
   Maximize2,
   RefreshCw,
+  Sparkles,
 } from 'lucide-react';
-
-/**
- * Compresses an image client-side to target 50 KB - 100 KB (prefer 70-90 KB)
- */
-export const compressImageToTargetSize = (file, minKb = 50, maxKb = 100) => {
-  return new Promise((resolve, reject) => {
-    if (!file) {
-      reject(new Error('No file provided'));
-      return;
-    }
-
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error('Failed to read photo file'));
-    reader.onload = (e) => {
-      const img = new Image();
-      img.onerror = () => reject(new Error('Failed to parse image'));
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        let width = img.width;
-        let height = img.height;
-
-        // Scale max dimension to 1200px for crisp details
-        const maxDim = 1200;
-        if (width > maxDim || height > maxDim) {
-          if (width > height) {
-            height = Math.round((height * maxDim) / width);
-            width = maxDim;
-          } else {
-            width = Math.round((width * maxDim) / height);
-            height = maxDim;
-          }
-        }
-
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        ctx.fillStyle = '#FFFFFF';
-        ctx.fillRect(0, 0, width, height);
-        ctx.drawImage(img, 0, 0, width, height);
-
-        // Iterative JPEG quality tuning to strictly hit 50-100 KB
-        let minQ = 0.2;
-        let maxQ = 0.95;
-        let bestDataUrl = canvas.toDataURL('image/jpeg', 0.75);
-        let bestSizeKb = Math.round((bestDataUrl.length * 3) / 4 / 1024);
-
-        for (let i = 0; i < 5; i++) {
-          const q = (minQ + maxQ) / 2;
-          const currentDataUrl = canvas.toDataURL('image/jpeg', q);
-          const currentKb = Math.round((currentDataUrl.length * 3) / 4 / 1024);
-
-          bestDataUrl = currentDataUrl;
-          bestSizeKb = currentKb;
-
-          if (currentKb >= minKb && currentKb <= maxKb) {
-            break;
-          } else if (currentKb > maxKb) {
-            maxQ = q;
-          } else {
-            minQ = q;
-          }
-        }
-
-        resolve({
-          dataUrl: bestDataUrl,
-          sizeKb: bestSizeKb,
-          width,
-          height,
-        });
-      };
-      img.src = e.target.result;
-    };
-    reader.readAsDataURL(file);
-  });
-};
+import { compressImage, formatFileSize } from '../../utils/imageCompressor';
+import { uploadShopVisitPhoto } from '../../services/photoStorageService';
 
 export default function ShopPhotoCapture({ shop, visitId, onPhotoSaved }) {
   const { currentUser } = useAuth();
   const { shopPhotos = [], addShopPhoto, deleteShopPhoto, getFormattedDate, getFormattedTime } = useData();
 
-  const [previewPhoto, setPreviewPhoto] = useState(null); // { dataUrl, sizeKb }
+  // Compressed result: { blob, dataUrl, originalSizeKb, compressedSizeKb, mimeType, width, height, compressionRatio }
+  const [compressedResult, setCompressedResult] = useState(null);
   const [compressing, setCompressing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -115,37 +44,64 @@ export default function ShopPhotoCapture({ shop, visitId, onPhotoSaved }) {
 
     setCompressing(true);
     try {
-      const result = await compressImageToTargetSize(file, 50, 100);
-      setPreviewPhoto(result);
+      const result = await compressImage(file, {
+        maxDimension: 1280,
+        minKb: 50,
+        targetKb: 120,
+        maxKb: 200,
+      });
+      setCompressedResult(result);
     } catch (err) {
       console.error('Error compressing photo:', err);
       setErrorMessage(
-        'Camera permission was denied or photo could not be captured. Camera permission is required to take a photo.'
+        'Camera permission was denied or photo could not be compressed. Please check device permissions.'
       );
     } finally {
       setCompressing(false);
     }
   };
 
-  const handleSavePhoto = () => {
-    if (!previewPhoto) return;
+  const handleSavePhoto = async () => {
+    if (!compressedResult) return;
     setSaving(true);
+    setErrorMessage('');
 
     try {
+      const photoId = `shop-photo-${Date.now()}`;
+      
+      // Upload compressed binary to Firebase Storage (with offline safety fallback)
+      const uploadRes = await uploadShopVisitPhoto({
+        blob: compressedResult.blob,
+        dataUrl: compressedResult.dataUrl,
+        shopId: shop.id,
+        visitId: visitId || null,
+        photoId,
+        compressedSizeKb: compressedResult.compressedSizeKb,
+        mimeType: compressedResult.mimeType,
+        shopName: shop.name,
+        marketerId: currentUser?.id,
+      });
+
       const saved = addShopPhoto({
+        id: photoId,
         shopId: shop.id,
         shopName: shop.name,
         visitId: visitId || null,
         marketerId: currentUser?.id,
         marketerName: currentUser?.name,
         photoType: 'Shop Visit Photo',
-        imageData: previewPhoto.dataUrl,
-        fileSizeKb: previewPhoto.sizeKb,
+        photoUrl: uploadRes.photoUrl,
+        photoStoragePath: uploadRes.photoStoragePath,
+        imageData: uploadRes.photoUrl || compressedResult.dataUrl, // Backward compatibility
+        fileSizeKb: compressedResult.compressedSizeKb,
+        originalSizeKb: compressedResult.originalSizeKb,
+        mimeType: compressedResult.mimeType,
+        isOfflineFallback: uploadRes.isOfflineFallback,
         date: getFormattedDate(),
         time: getFormattedTime(),
       });
 
-      setPreviewPhoto(null);
+      setCompressedResult(null);
       if (onPhotoSaved) onPhotoSaved(saved);
     } catch (err) {
       console.error('Failed to save shop photo:', err);
@@ -156,7 +112,7 @@ export default function ShopPhotoCapture({ shop, visitId, onPhotoSaved }) {
   };
 
   const handleRetake = () => {
-    setPreviewPhoto(null);
+    setCompressedResult(null);
     setErrorMessage('');
     // Directly reopen device camera
     setTimeout(() => {
@@ -201,7 +157,7 @@ export default function ShopPhotoCapture({ shop, visitId, onPhotoSaved }) {
         </div>
       )}
 
-      {/* Direct Device Camera Input Only (Strictly Camera, No Gallery/Upload) */}
+      {/* Direct Device Camera Input Only */}
       <input
         ref={cameraInputRef}
         type="file"
@@ -215,30 +171,41 @@ export default function ShopPhotoCapture({ shop, visitId, onPhotoSaved }) {
       {compressing && (
         <div className="py-6 bg-white rounded-2xl border border-dashed border-amber-300 text-center space-y-2 animate-pulse">
           <RefreshCw className="w-6 h-6 text-amber-600 animate-spin mx-auto" />
-          <p className="text-xs font-bold text-slate-800">Processing & Compressing Photo...</p>
-          <p className="text-[10px] text-slate-500">Optimizing to ~70-90 KB for fast save</p>
+          <p className="text-xs font-bold text-slate-800">Auto Compressing Photo...</p>
+          <p className="text-[10px] text-slate-500">Optimizing resolution to target 50–150 KB</p>
         </div>
       )}
 
       {/* Photo Preview & Save Mode */}
-      {previewPhoto && !compressing && (
+      {compressedResult && !compressing && (
         <div className="bg-white p-3.5 rounded-2xl border border-slate-300 space-y-3 animate-in fade-in shadow-xs">
           <div className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center justify-between">
-            <span>PHOTO PREVIEW</span>
-            <span className="text-[10px] text-emerald-700 bg-emerald-100 font-bold px-2 py-0.5 rounded-md">
-              {previewPhoto.sizeKb} KB (Compressed)
+            <span className="flex items-center gap-1">
+              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+              <span>PHOTO COMPRESSED</span>
             </span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] text-slate-400 line-through">
+                {formatFileSize(compressedResult.originalSizeKb)}
+              </span>
+              <span className="text-[10px] text-emerald-800 bg-emerald-100 font-bold px-2 py-0.5 rounded-md border border-emerald-300">
+                {formatFileSize(compressedResult.compressedSizeKb)} ({compressedResult.mimeType.includes('webp') ? 'WebP' : 'JPEG'})
+              </span>
+            </div>
           </div>
 
           <div className="relative rounded-xl overflow-hidden bg-slate-900 aspect-video max-h-56 flex items-center justify-center border border-slate-200">
             <img
-              src={previewPhoto.dataUrl}
+              src={compressedResult.dataUrl}
               alt="Captured Shop Photo"
               className="w-full h-full object-contain"
             />
-            <div className="absolute top-2 left-2 bg-black/70 text-white text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 backdrop-blur-xs">
+            <div className="absolute top-2 left-2 bg-black/75 text-white text-[10px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 backdrop-blur-xs">
               <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-              <span>{previewPhoto.sizeKb} KB</span>
+              <span>{formatFileSize(compressedResult.compressedSizeKb)}</span>
+              {compressedResult.compressionRatio > 0 && (
+                <span className="text-emerald-300 font-mono">({compressedResult.compressionRatio}% saved)</span>
+              )}
             </div>
             <div className="absolute top-2 right-2 bg-amber-500 text-slate-950 text-[10px] font-black px-2 py-0.5 rounded-full uppercase">
               Shop Visit Photo
@@ -261,14 +228,14 @@ export default function ShopPhotoCapture({ shop, visitId, onPhotoSaved }) {
               className="flex-1 py-3 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-98 text-white font-black text-xs flex items-center justify-center gap-1.5 shadow-md transition-all disabled:opacity-50"
             >
               <CheckCircle2 className="w-4 h-4" />
-              <span>{saving ? 'Saving...' : 'Save Photo ✓'}</span>
+              <span>{saving ? 'Uploading...' : 'Save Photo ✓'}</span>
             </button>
           </div>
         </div>
       )}
 
-      {/* Primary Action Button (Strictly Camera Capture Only) */}
-      {!previewPhoto && !compressing && (
+      {/* Primary Action Button */}
+      {!compressedResult && !compressing && (
         <div className="space-y-3">
           <button
             type="button"
@@ -293,7 +260,7 @@ export default function ShopPhotoCapture({ shop, visitId, onPhotoSaved }) {
                     onClick={() => setActiveLightboxPhoto(photo)}
                   >
                     <img
-                      src={photo.imageData}
+                      src={photo.photoUrl || photo.imageData}
                       alt="Shop thumbnail"
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform"
                     />
@@ -301,7 +268,7 @@ export default function ShopPhotoCapture({ shop, visitId, onPhotoSaved }) {
                       <Maximize2 className="w-4 h-4 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
                     </div>
                     <span className="absolute bottom-0 inset-x-0 bg-black/60 text-[8px] text-white font-mono text-center py-0.5 backdrop-blur-2xs truncate px-0.5">
-                      {photo.date || 'Photo'}
+                      {photo.fileSizeKb ? `${photo.fileSizeKb} KB` : (photo.date || 'Photo')}
                     </span>
                   </div>
                 ))}
@@ -320,7 +287,7 @@ export default function ShopPhotoCapture({ shop, visitId, onPhotoSaved }) {
               <div>
                 <p className="text-xs font-bold text-amber-300">{shop.name}</p>
                 <p className="text-[10px] text-slate-400">
-                  {activeLightboxPhoto.photoType} • {activeLightboxPhoto.date} {activeLightboxPhoto.time} • {activeLightboxPhoto.fileSizeKb} KB
+                  {activeLightboxPhoto.photoType} • {activeLightboxPhoto.date} {activeLightboxPhoto.time} • {activeLightboxPhoto.fileSizeKb ? `${activeLightboxPhoto.fileSizeKb} KB` : ''}
                 </p>
               </div>
               <button
@@ -335,7 +302,7 @@ export default function ShopPhotoCapture({ shop, visitId, onPhotoSaved }) {
             {/* Photo Display */}
             <div className="p-2 max-h-[70vh] flex items-center justify-center bg-black">
               <img
-                src={activeLightboxPhoto.imageData}
+                src={activeLightboxPhoto.photoUrl || activeLightboxPhoto.imageData}
                 alt="Full Shop Photo"
                 className="max-h-[65vh] w-auto object-contain rounded-lg"
               />

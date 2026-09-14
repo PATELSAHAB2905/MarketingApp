@@ -13,7 +13,11 @@ import {
   Upload,
   Image as ImageIcon,
   Trash2,
+  RefreshCw,
+  Sparkles,
 } from 'lucide-react';
+import { compressImage, formatFileSize } from '../../utils/imageCompressor';
+import { uploadCollectionSlipPhoto } from '../../services/photoStorageService';
 
 export default function CollectionForm({ shop, editingCollection, onClose, onCollectionSubmitted }) {
   const { currentUser } = useAuth();
@@ -32,7 +36,21 @@ export default function CollectionForm({ shop, editingCollection, onClose, onCol
     editingCollection?.invoiceRef || editingCollection?.refNo || 'INV-2026-084'
   );
   const [remark, setRemark] = useState(editingCollection?.remark || '');
-  const [slipPhoto, setSlipPhoto] = useState(editingCollection?.slipPhoto || null); // base64 string
+
+  // Photo state
+  const [compressedSlip, setCompressedSlip] = useState(
+    editingCollection?.slipPhoto || editingCollection?.slipPhotoUrl
+      ? {
+          dataUrl: editingCollection.slipPhotoUrl || editingCollection.slipPhoto,
+          compressedSizeKb: editingCollection.slipCompressedSizeKb || 0,
+          originalSizeKb: 0,
+          mimeType: 'image/webp',
+          isExisting: true,
+        }
+      : null
+  );
+  const [compressing, setCompressing] = useState(false);
+  const [photoError, setPhotoError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
 
@@ -47,14 +65,28 @@ export default function CollectionForm({ shop, editingCollection, onClose, onCol
   // 21-Day Payment Credit Policy Status (Rule 11)
   const invoiceDate = targetShop?.lastOrderDate || '01-08-2026';
 
-  const handlePhotoCapture = (e) => {
+  const handlePhotoCapture = async (e) => {
+    setPhotoError('');
     const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onload = (uploadEvent) => {
-        setSlipPhoto(uploadEvent.target.result);
-      };
-      reader.readAsDataURL(file);
+    if (!file) return;
+
+    // Reset input value to allow retaking same photo if desired
+    e.target.value = '';
+
+    setCompressing(true);
+    try {
+      const result = await compressImage(file, {
+        maxDimension: 1280,
+        minKb: 50,
+        targetKb: 120,
+        maxKb: 200,
+      });
+      setCompressedSlip(result);
+    } catch (err) {
+      console.error('Failed to compress collection slip photo:', err);
+      setPhotoError('Failed to process and compress photo. Please try again.');
+    } finally {
+      setCompressing(false);
     }
   };
 
@@ -73,11 +105,37 @@ export default function CollectionForm({ shop, editingCollection, onClose, onCol
     }
   };
 
-  const executeSave = () => {
+  const executeSave = async () => {
     setShowConfirmModal(false);
     setSubmitting(true);
 
-    setTimeout(() => {
+    try {
+      const collectionId = editingCollection ? editingCollection.id : `col-${Date.now()}`;
+      let slipPhotoUrl = editingCollection?.slipPhotoUrl || editingCollection?.slipPhoto || null;
+      let slipStoragePath = editingCollection?.slipStoragePath || null;
+      let slipCompressedSizeKb = compressedSlip?.compressedSizeKb || 0;
+
+      // If a new compressed photo was captured (not an unmodified existing one)
+      if (compressedSlip && !compressedSlip.isExisting) {
+        const uploadRes = await uploadCollectionSlipPhoto({
+          blob: compressedSlip.blob,
+          dataUrl: compressedSlip.dataUrl,
+          collectionId,
+          compressedSizeKb: compressedSlip.compressedSizeKb,
+          mimeType: compressedSlip.mimeType,
+          shopId: targetShop.id,
+          marketerId: currentUser?.id,
+        });
+
+        slipPhotoUrl = uploadRes.photoUrl || compressedSlip.dataUrl;
+        slipStoragePath = uploadRes.photoStoragePath;
+        slipCompressedSizeKb = compressedSlip.compressedSizeKb;
+      } else if (!compressedSlip) {
+        slipPhotoUrl = null;
+        slipStoragePath = null;
+        slipCompressedSizeKb = 0;
+      }
+
       let collectionRecord = null;
       if (editingCollection) {
         collectionRecord = updateCollection(editingCollection.id, {
@@ -93,11 +151,15 @@ export default function CollectionForm({ shop, editingCollection, onClose, onCol
           amount: Number(amount),
           remainingOutstanding,
           paymentMode,
-          slipPhoto,
+          slipPhoto: slipPhotoUrl, // Backward compatibility
+          slipPhotoUrl,
+          slipStoragePath,
+          slipCompressedSizeKb,
           remark,
         });
       } else {
         collectionRecord = addCollection({
+          id: collectionId,
           shopId: targetShop.id,
           shopName: targetShop.name,
           marketId: targetShop.marketId || todayMarket?.marketId || 'mkt-pachore',
@@ -110,14 +172,21 @@ export default function CollectionForm({ shop, editingCollection, onClose, onCol
           amount: Number(amount),
           remainingOutstanding,
           paymentMode,
-          slipPhoto, // Uploaded Physical Collection Slip Photo
+          slipPhoto: slipPhotoUrl, // Backward compatibility
+          slipPhotoUrl,
+          slipStoragePath,
+          slipCompressedSizeKb,
           remark,
         });
       }
 
       setSubmitting(false);
       if (onCollectionSubmitted) onCollectionSubmitted(collectionRecord);
-    }, 400);
+    } catch (err) {
+      console.error('Failed to save collection record:', err);
+      alert('Failed to save collection. Please try again.');
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -249,24 +318,48 @@ export default function CollectionForm({ shop, editingCollection, onClose, onCol
                 <Camera className="w-4 h-4 text-emerald-700" />
                 Physical Collection Slip Photo
               </label>
-              <span className="text-[10px] font-semibold text-slate-400">Optional / Verification</span>
+              <span className="text-[10px] font-semibold text-slate-400">Auto Compressed (50–150 KB)</span>
             </div>
 
-            {slipPhoto ? (
-              <div className="relative rounded-2xl overflow-hidden border border-emerald-300 bg-black/5 p-2 flex items-center justify-between">
+            {photoError && (
+              <p className="text-xs text-red-600 font-bold bg-red-50 p-2 rounded-lg border border-red-200">
+                {photoError}
+              </p>
+            )}
+
+            {compressing ? (
+              <div className="py-4 bg-white rounded-xl border border-dashed border-emerald-400 text-center space-y-1.5 animate-pulse">
+                <RefreshCw className="w-5 h-5 text-emerald-600 animate-spin mx-auto" />
+                <p className="text-xs font-bold text-slate-800">Auto Compressing Slip Photo...</p>
+                <p className="text-[10px] text-slate-500">Optimizing resolution for fast upload</p>
+              </div>
+            ) : compressedSlip ? (
+              <div className="relative rounded-2xl overflow-hidden border border-emerald-300 bg-white p-2.5 flex items-center justify-between shadow-xs">
                 <img
-                  src={slipPhoto}
+                  src={compressedSlip.dataUrl}
                   alt="Collection Slip"
-                  className="w-16 h-16 object-cover rounded-xl border border-white shadow-xs"
+                  className="w-16 h-16 object-cover rounded-xl border border-slate-200 shadow-xs"
                 />
                 <div className="flex-1 px-3">
-                  <p className="text-xs font-bold text-emerald-800">Slip Photo Captured ✓</p>
-                  <p className="text-[10px] text-slate-500">Will be verified in Management Dashboard</p>
+                  <div className="flex items-center gap-1 text-xs font-bold text-emerald-800">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>Slip Photo Ready</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    {compressedSlip.originalSizeKb > 0 && (
+                      <span className="text-[10px] text-slate-400 line-through">
+                        {formatFileSize(compressedSlip.originalSizeKb)}
+                      </span>
+                    )}
+                    <span className="text-[10px] font-extrabold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                      {formatFileSize(compressedSlip.compressedSizeKb)}
+                    </span>
+                  </div>
                 </div>
                 <button
                   type="button"
-                  onClick={() => setSlipPhoto(null)}
-                  className="p-2 bg-red-100 text-red-700 hover:bg-red-200 rounded-xl"
+                  onClick={() => setCompressedSlip(null)}
+                  className="p-2 bg-red-50 text-red-700 hover:bg-red-100 rounded-xl transition-colors"
                   title="Remove photo"
                 >
                   <Trash2 className="w-4 h-4" />
@@ -319,7 +412,7 @@ export default function CollectionForm({ shop, editingCollection, onClose, onCol
           {/* Submit Button */}
           <button
             type="submit"
-            disabled={submitting}
+            disabled={submitting || compressing}
             className="w-full py-4 bg-gradient-to-r from-emerald-600 via-teal-600 to-slate-900 text-white rounded-2xl font-black text-base shadow-xl flex items-center justify-center gap-2 active:scale-98 transition-all disabled:opacity-50"
           >
             {submitting

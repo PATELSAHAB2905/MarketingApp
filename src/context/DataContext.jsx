@@ -995,16 +995,22 @@ export const DataProvider = ({ children }) => {
 
   // ======= SHOP PHOTOS (GENERAL VISIT & DISPLAY PHOTOS) =======
   const addShopPhoto = (photoData) => {
+    const photoUrl = photoData.photoUrl || photoData.imageData;
     const newPhoto = {
-      id: `photo-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      id: photoData.id || `photo-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       shopId: photoData.shopId,
       shopName: photoData.shopName || '',
       visitId: photoData.visitId || null,
       marketerId: photoData.marketerId,
       marketerName: photoData.marketerName || 'Marketer',
       photoType: photoData.photoType || 'Shop Visit Photo',
-      imageData: photoData.imageData, // Compressed base64 string
-      fileSizeKb: photoData.fileSizeKb || 75,
+      photoUrl,
+      photoStoragePath: photoData.photoStoragePath || null,
+      imageData: photoUrl, // Backward compatibility
+      fileSizeKb: photoData.fileSizeKb || photoData.compressedSizeKb || 75,
+      originalSizeKb: photoData.originalSizeKb || 0,
+      mimeType: photoData.mimeType || 'image/webp',
+      isOfflineFallback: photoData.isOfflineFallback || false,
       date: photoData.date || getFormattedDate(),
       time: photoData.time || getFormattedTime(),
       createdDate: getFormattedDate(),
@@ -1018,7 +1024,7 @@ export const DataProvider = ({ children }) => {
       if (s.id === photoData.shopId) {
         const updatedShop = {
           ...s,
-          lastPhotoUrl: photoData.imageData,
+          lastPhotoUrl: photoUrl,
           lastPhotoDate: getFormattedDate(),
           photos: [newPhoto, ...(s.photos || [])],
           updatedDate: getFormattedDate(),
@@ -1034,9 +1040,9 @@ export const DataProvider = ({ children }) => {
       photoData.marketerName,
       'MARKETER',
       'ADD_SHOP_PHOTO',
-      `Shop photo captured for ${photoData.shopName || photoData.shopId} (${photoData.fileSizeKb || 75} KB)`,
+      `Shop photo captured for ${photoData.shopName || photoData.shopId} (${newPhoto.fileSizeKb} KB)`,
       null,
-      { shopId: photoData.shopId, photoType: newPhoto.photoType, fileSizeKb: photoData.fileSizeKb }
+      { shopId: photoData.shopId, photoType: newPhoto.photoType, fileSizeKb: newPhoto.fileSizeKb }
     );
 
     return newPhoto;
@@ -1176,8 +1182,8 @@ export const DataProvider = ({ children }) => {
 
   const addCollection = (collectionData) => {
     const newColl = {
-      id: `col-${Date.now()}`,
-      receiptNumber: `RCP-${Math.floor(100000 + Math.random() * 900000)}`,
+      id: collectionData.id || `col-${Date.now()}`,
+      receiptNumber: collectionData.receiptNumber || `RCP-${Math.floor(100000 + Math.random() * 900000)}`,
       createdDate: getFormattedDate(),
       createdTime: getFormattedTime(),
       updatedDate: getFormattedDate(),
