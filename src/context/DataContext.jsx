@@ -963,6 +963,98 @@ export const DataProvider = ({ children }) => {
     return updatedRecord;
   };
 
+  /**
+   * Admin remotely ends an active marketer's day session with an audited reason.
+   */
+  const adminEndMarketerDay = ({ marketerId, marketerName = 'Marketer', reason = 'Admin Remote End Day', date }) => {
+    const today = date || getFormattedDate();
+    const endT = getFormattedTime();
+    let updatedRecord = null;
+
+    setCheckIns((prev) => {
+      const existingIdx = prev.findIndex(
+        (c) => c.marketerId === marketerId && (c.date === today || c.createdDate === today)
+      );
+
+      if (existingIdx >= 0) {
+        const existing = prev[existingIdx];
+        const existingSessions = Array.isArray(existing.sessions) && existing.sessions.length > 0
+          ? existing.sessions
+          : [{
+              sessionNumber: 1,
+              startTime: existing.startTime || existing.createdTime || endT,
+              endTime: null,
+              status: 'ACTIVE',
+            }];
+
+        const updatedSessions = existingSessions.map((s, idx) => {
+          if (idx === existingSessions.length - 1) {
+            return {
+              ...s,
+              endTime: endT,
+              status: 'ENDED',
+              endedBy: 'Admin',
+              endReason: reason,
+            };
+          }
+          return s;
+        });
+
+        updatedRecord = {
+          ...existing,
+          endTime: endT,
+          endedTime: endT,
+          status: 'INACTIVE',
+          isDayEnded: true,
+          endedBy: 'Admin',
+          endReason: reason,
+          sessions: updatedSessions,
+          updatedDate: getFormattedDate(),
+          updatedTime: getFormattedTime(),
+        };
+        const updated = [...prev];
+        updated[existingIdx] = updatedRecord;
+        return updated;
+      } else {
+        const endedSession = {
+          sessionNumber: 1,
+          startTime: endT,
+          endTime: endT,
+          status: 'ENDED',
+          endedBy: 'Admin',
+          endReason: reason,
+        };
+
+        updatedRecord = {
+          id: `chk-${Date.now()}`,
+          marketerId,
+          marketerName,
+          date: today,
+          createdDate: today,
+          startTime: endT,
+          createdTime: endT,
+          firstStartTime: endT,
+          endTime: endT,
+          endedTime: endT,
+          status: 'INACTIVE',
+          isDayEnded: true,
+          endedBy: 'Admin',
+          endReason: reason,
+          currentSessionNumber: 1,
+          sessions: [endedSession],
+          updatedDate: getFormattedDate(),
+          updatedTime: getFormattedTime(),
+          syncStatus: isOfflineMode ? 'Pending Sync' : 'Synced',
+        };
+        return [updatedRecord, ...prev];
+      }
+    });
+
+    addAuditLog('Admin', 'ADMIN', 'FORCE_END_DAY', `Admin ended day session for ${marketerName} (${marketerId}). Reason: ${reason}`, null, { marketerId, reason, date: today, endTime: endT });
+    if (updatedRecord) persistToFirestore('checkIns', updatedRecord.id, updatedRecord);
+    return updatedRecord;
+  };
+
   const addShopVisit = (visitData) => {
     const newVisit = {
       id: `vst-${Date.now()}`,
@@ -1769,7 +1861,7 @@ export const DataProvider = ({ children }) => {
         importBatches, setImportBatches, importHistoricalData, importHistoricalBusinessData, importOldPartyData,
         gstConfig, setGstConfig,
         creditPolicy, setCreditPolicy,
-        checkIns, addCheckIn, endMarketerDay,
+        checkIns, addCheckIn, endMarketerDay, adminEndMarketerDay,
         visits, addShopVisit,
         shopPhotos, setShopPhotos, addShopPhoto, deleteShopPhoto,
         orders, addOrder, updateOrder, updateOrderSyncStatus,

@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { setDocument } from '../services/firestoreService';
+import { setDocument, subscribeToCollection } from '../services/firestoreService';
 
 const AuthContext = createContext();
 
@@ -36,16 +36,26 @@ export function getDefaultPassword(mobile) {
 }
 
 export const AuthProvider = ({ children }) => {
-  // Current logged in user (null by default on new session, strictly stored in sessionStorage)
+  // Current logged in user (Persists across refreshes, reopens & tab switches)
   const [currentUser, setCurrentUser] = useState(() => {
-    // Clear any legacy persistent login from localStorage so fresh session always requires login
-    localStorage.removeItem('PATEL_CURRENT_USER');
-    
-    const saved = sessionStorage.getItem('PATEL_SESSION_USER');
+    const savedPersistent = localStorage.getItem('PATEL_PERSISTENT_USER');
+    if (savedPersistent) {
+      try { return JSON.parse(savedPersistent); } catch (e) {}
+    }
+    const savedSession = sessionStorage.getItem('PATEL_SESSION_USER');
+    if (savedSession) {
+      try { return JSON.parse(savedSession); } catch (e) {}
+    }
+    return null;
+  });
+
+  // Active marketer login session state: { [marketerId]: { loginStatus: 'LOGGED_IN' | 'LOGGED_OUT', ... } }
+  const [activeSessions, setActiveSessions] = useState(() => {
+    const saved = localStorage.getItem('PATEL_ACTIVE_SESSIONS');
     if (saved) {
       try { return JSON.parse(saved); } catch (e) {}
     }
-    return null; // Require login every new session
+    return {};
   });
 
   // Custom passwords map: { [userId]: 'customPassword' }
@@ -82,15 +92,20 @@ export const AuthProvider = ({ children }) => {
     return DEFAULT_ADMIN;
   });
 
-  // Sync session state to sessionStorage (expires when browser session ends)
+  // Save persistent login to localStorage & sessionStorage
   useEffect(() => {
     if (currentUser) {
+      localStorage.setItem('PATEL_PERSISTENT_USER', JSON.stringify(currentUser));
       sessionStorage.setItem('PATEL_SESSION_USER', JSON.stringify(currentUser));
     } else {
+      localStorage.removeItem('PATEL_PERSISTENT_USER');
       sessionStorage.removeItem('PATEL_SESSION_USER');
     }
-    localStorage.removeItem('PATEL_CURRENT_USER');
   }, [currentUser]);
+
+  useEffect(() => {
+    localStorage.setItem('PATEL_ACTIVE_SESSIONS', JSON.stringify(activeSessions));
+  }, [activeSessions]);
 
   useEffect(() => {
     localStorage.setItem('PATEL_USER_PASSWORDS', JSON.stringify(userPasswords));
@@ -103,6 +118,38 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     localStorage.setItem('PATEL_ADMIN_PROFILE', JSON.stringify(adminProfile));
   }, [adminProfile]);
+
+  // Real-time Firestore session listener for cloud synchronization
+  useEffect(() => {
+    const unsubscribe = subscribeToCollection('activeSessions', (docs) => {
+      if (Array.isArray(docs) && docs.length > 0) {
+        setActiveSessions((prev) => {
+          const next = { ...prev };
+          docs.forEach((doc) => {
+            if (doc.id) {
+              next[doc.id] = { ...(next[doc.id] || {}), ...doc };
+            }
+          });
+          return next;
+        });
+
+        // If current logged-in marketer has been force-logged-out by Admin
+        if (currentUser && currentUser.role === 'MARKETER') {
+          const mySession = docs.find((d) => d.id === currentUser.id || d.marketerId === currentUser.id);
+          if (mySession && (mySession.loginStatus === 'LOGGED_OUT' || mySession.forcedLogout)) {
+            setCurrentUser(null);
+            localStorage.removeItem('PATEL_PERSISTENT_USER');
+            sessionStorage.removeItem('PATEL_SESSION_USER');
+            alert('Your session has been logged out by Administrator.');
+          }
+        }
+      }
+    });
+
+    return () => {
+      if (typeof unsubscribe === 'function') unsubscribe();
+    };
+  }, [currentUser]);
 
   // Helper to get effective password for a user
   const getEffectivePassword = (userId, mobile) => {
@@ -142,11 +189,9 @@ export const AuthProvider = ({ children }) => {
 
   /**
    * Automatically triggered when Marketer's mobile number is changed by Admin.
-   * Resets the marketer's password back to the last 4 digits of the new mobile number.
-   * Clears old passwords and resets failed attempts.
    */
   const onMarketerMobileChanged = (marketerId, newMobile) => {
-    // 1. Remove custom password so it reverts to the last 4 digits of new mobile
+    // 1. Remove custom password so it reverts to last 4 digits of new mobile
     setUserPasswords((prev) => {
       const next = { ...prev };
       delete next[marketerId];
@@ -156,7 +201,7 @@ export const AuthProvider = ({ children }) => {
     // 2. Reset failed attempts
     resetAttempts(marketerId);
 
-    // 3. If the currently logged in user is this marketer, update their mobile in session
+    // 3. If currently logged in user is this marketer, update mobile
     setCurrentUser((prev) => {
       if (prev && prev.id === marketerId) {
         return {
@@ -223,6 +268,7 @@ export const AuthProvider = ({ children }) => {
           role: 'ADMIN',
           email: adminProfile.email,
           mobile: adminProfile.mobile,
+          loginTime: new Date().toISOString(),
         };
         setCurrentUser(user);
         return { success: true, user };
@@ -277,13 +323,38 @@ export const AuthProvider = ({ children }) => {
 
       if (cleanPass === expectedPassword || cleanPass === MASTER_PASSWORD) {
         resetAttempts(userKey);
+        const sessionId = `sess-${Date.now()}`;
+        const timestamp = new Date().toISOString();
+
         const user = {
           id: targetMarketer.id,
           name: targetMarketer.name,
           role: 'MARKETER',
           email: targetMarketer.email || `${targetMarketer.id}@patelsahab.com`,
           mobile: targetMarketer.mobile,
+          sessionId,
+          loggedInAt: timestamp,
         };
+
+        // Record active login session in local state & Firestore
+        const sessionRecord = {
+          id: targetMarketer.id,
+          marketerId: targetMarketer.id,
+          marketerName: targetMarketer.name,
+          loginStatus: 'LOGGED_IN',
+          sessionId,
+          loggedInAt: timestamp,
+          lastActivityAt: timestamp,
+          forcedLogout: false,
+        };
+
+        setActiveSessions((prev) => ({
+          ...prev,
+          [targetMarketer.id]: sessionRecord,
+        }));
+
+        setDocument('activeSessions', targetMarketer.id, sessionRecord).catch(() => {});
+
         setCurrentUser(user);
         return { success: true, user };
       } else {
@@ -311,7 +382,6 @@ export const AuthProvider = ({ children }) => {
       };
     }
 
-    // Master password verified! Reset attempts
     resetAttempts(userKey);
 
     if (newPassword && newPassword.length >= 4) {
@@ -320,7 +390,6 @@ export const AuthProvider = ({ children }) => {
         [userKey]: String(newPassword).trim(),
       }));
     } else {
-      // Revert to default password (last 4 digits of mobile)
       setUserPasswords((prev) => {
         const next = { ...prev };
         delete next[userKey];
@@ -356,7 +425,6 @@ export const AuthProvider = ({ children }) => {
       [userId]: cleanNew,
     }));
 
-    // Optional firestore sync for passwords backup
     setDocument('systemSettings', `auth_${userId}`, {
       userId,
       hasCustomPassword: true,
@@ -379,10 +447,62 @@ export const AuthProvider = ({ children }) => {
     return { success: true, message: 'Marketer password has been reset to default (last 4 digits of mobile).' };
   };
 
+  /**
+   * Admin Force Logout Marketer
+   */
+  const adminForceLogoutMarketer = (marketerId, marketerName = 'Marketer') => {
+    const timestamp = new Date().toISOString();
+    const updatedSession = {
+      id: marketerId,
+      marketerId,
+      marketerName,
+      loginStatus: 'LOGGED_OUT',
+      forcedLogout: true,
+      forcedLogoutAt: timestamp,
+      forcedBy: 'Admin',
+      lastActivityAt: timestamp,
+    };
+
+    setActiveSessions((prev) => ({
+      ...prev,
+      [marketerId]: updatedSession,
+    }));
+
+    setDocument('activeSessions', marketerId, updatedSession).catch(() => {});
+
+    // If currently operating as this marketer on this local browser
+    if (currentUser && currentUser.id === marketerId) {
+      logout();
+    }
+
+    return { success: true, message: `Force logout issued for ${marketerName}.` };
+  };
+
   const logout = () => {
+    if (currentUser && currentUser.role === 'MARKETER') {
+      const marketerId = currentUser.id;
+      const timestamp = new Date().toISOString();
+      const updatedSession = {
+        id: marketerId,
+        marketerId,
+        marketerName: currentUser.name,
+        loginStatus: 'LOGGED_OUT',
+        loggedOutAt: timestamp,
+        lastActivityAt: timestamp,
+        forcedLogout: false,
+      };
+
+      setActiveSessions((prev) => ({
+        ...prev,
+        [marketerId]: updatedSession,
+      }));
+
+      setDocument('activeSessions', marketerId, updatedSession).catch(() => {});
+    }
+
     setCurrentUser(null);
+    localStorage.removeItem('PATEL_PERSISTENT_USER');
     sessionStorage.removeItem('PATEL_SESSION_USER');
-    localStorage.removeItem('PATEL_CURRENT_USER');
   };
 
   const updateAdminProfile = (updates) => {
@@ -396,10 +516,12 @@ export const AuthProvider = ({ children }) => {
         adminProfile,
         userPasswords,
         failedAttempts,
+        activeSessions,
         loginWithPassword,
         unlockAndResetWithMasterPassword,
         changePassword,
         adminResetMarketerPassword,
+        adminForceLogoutMarketer,
         onMarketerMobileChanged,
         getEffectivePassword,
         getAttemptsCount,

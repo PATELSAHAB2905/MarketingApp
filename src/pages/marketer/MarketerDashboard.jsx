@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
 import StatusBadge from '../../components/common/StatusBadge';
@@ -17,6 +17,7 @@ import EndOfDayCheckout from './EndOfDayCheckout';
 import MarketerPerformance from './MarketerPerformance';
 import MarketerPartyStatement from './MarketerPartyStatement';
 import ChangePasswordModal from '../../components/common/ChangePasswordModal';
+import LogoutBlockedModal from '../../components/common/LogoutBlockedModal';
 
 import {
   Play,
@@ -47,6 +48,7 @@ import {
   User,
   Phone,
   Shield,
+  Lock,
 } from 'lucide-react';
 
 export default function MarketerDashboard({ activeTab, setActiveTab }) {
@@ -74,6 +76,14 @@ export default function MarketerDashboard({ activeTab, setActiveTab }) {
   const [viewingReturn, setViewingReturn] = useState(null);
   const [lastReceiptCollection, setLastReceiptCollection] = useState(null);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [showBlockedLogoutModal, setShowBlockedLogoutModal] = useState(false);
+
+  // Listen for global navbar EOD triggers
+  useEffect(() => {
+    const handleOpenEod = () => setActiveModal('eod');
+    window.addEventListener('patel:open_eod', handleOpenEod);
+    return () => window.removeEventListener('patel:open_eod', handleOpenEod);
+  }, []);
 
   const todayDate = getFormattedDate();
   const todayMarket = getTodayMarket(currentUser?.id, todayDate);
@@ -138,26 +148,57 @@ export default function MarketerDashboard({ activeTab, setActiveTab }) {
     Math.round((customersConnectedCount / (marketerTarget.dailyVisits || 1)) * 100)
   );
 
+  // Security & Workflow Gate: Work actions require an ACTIVE day session
+  const requireActiveDay = (actionFn) => {
+    if (!isDayActive) {
+      if (isDayEnded) {
+        alert("Your day has ended. Please click 'START MY DAY AGAIN' to open a new session for further field operations.");
+      } else {
+        alert("Please complete 'START MY DAY' first to begin field operations.");
+      }
+      setActiveModal('checkin');
+      return;
+    }
+    actionFn();
+  };
+
+  // Secure Logout Handler (Blocked if day is currently ACTIVE)
+  const handleMarketerLogout = () => {
+    if (isDayActive) {
+      setShowBlockedLogoutModal(true);
+      return;
+    }
+    if (window.confirm('Are you sure you want to log out?')) {
+      logout();
+    }
+  };
+
   // Open shop visit flow
   const handleSelectShop = (shop) => {
-    setSelectedShop(shop);
-    setActiveModal('visit');
+    requireActiveDay(() => {
+      setSelectedShop(shop);
+      setActiveModal('visit');
+    });
   };
 
   // Open order for editing
   const handleEditOrder = (order) => {
-    setEditingOrder(order);
-    const sh = shops.find(s => s.id === order.shopId);
-    if (sh) setSelectedShop(sh);
-    setActiveModal('order');
+    requireActiveDay(() => {
+      setEditingOrder(order);
+      const sh = shops.find(s => s.id === order.shopId);
+      if (sh) setSelectedShop(sh);
+      setActiveModal('order');
+    });
   };
 
   // Open return for editing
   const handleEditReturn = (ret) => {
-    setEditingReturn(ret);
-    const sh = shops.find(s => s.id === ret.shopId);
-    if (sh) setSelectedShop(sh);
-    setActiveModal('return');
+    requireActiveDay(() => {
+      setEditingReturn(ret);
+      const sh = shops.find(s => s.id === ret.shopId);
+      if (sh) setSelectedShop(sh);
+      setActiveModal('return');
+    });
   };
 
   // Render tab views
@@ -265,13 +306,9 @@ export default function MarketerDashboard({ activeTab, setActiveTab }) {
               </button>
 
               <button
-                onClick={() => {
-                  if (window.confirm('Are you sure you want to log out?')) {
-                    logout();
-                  }
-                }}
+                onClick={handleMarketerLogout}
                 className="py-2.5 px-3 bg-red-950 hover:bg-red-900 text-red-200 hover:text-white rounded-xl font-bold text-xs border border-red-800/60 flex items-center justify-center gap-1.5 transition-colors"
-                title="Log Out"
+                title={isDayActive ? 'Logout (Day Active - End My Day Required)' : 'Log Out'}
               >
                 <LogOut className="w-4 h-4" />
                 <span>Logout</span>
@@ -488,10 +525,49 @@ export default function MarketerDashboard({ activeTab, setActiveTab }) {
         </div>
       </div>
 
+      {/* Session State Banner (Gating / Status Reminder) */}
+      {!todayCheckIn ? (
+        <div className="bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-red-500/20 border border-amber-400/40 rounded-2xl p-3.5 flex items-center justify-between text-amber-950 text-xs shadow-xs">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-amber-500 text-slate-950 flex items-center justify-center font-black">
+              <Lock className="w-4 h-4" />
+            </div>
+            <div>
+              <p className="font-black text-amber-950 uppercase text-[11px]">Field Work Locked</p>
+              <p className="text-[10px] text-amber-900 font-medium">Please tap START MY DAY to unlock visits, orders & collections.</p>
+            </div>
+          </div>
+          <button
+            onClick={() => setActiveModal('checkin')}
+            className="py-2 px-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-slate-950 font-black rounded-xl text-[11px] shadow-sm active:scale-95 transition-all flex-shrink-0"
+          >
+            START DAY
+          </button>
+        </div>
+      ) : isDayEnded ? (
+        <div className="bg-slate-100 border border-slate-300 rounded-2xl p-3.5 flex items-center justify-between text-slate-800 text-xs shadow-xs">
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-xl bg-slate-300 text-slate-700 flex items-center justify-center font-black">
+              <CheckCircle2 className="w-4 h-4 text-slate-700" />
+            </div>
+            <div>
+              <p className="font-black text-slate-900 uppercase text-[11px]">Day Session Ended ({todayCheckIn?.endTime || 'Evening'})</p>
+              <p className="text-[10px] text-slate-600 font-medium">Need to log late orders or collections? Start another session.</p>
+            </div>
+          </div>
+          <button
+            onClick={() => setActiveModal('checkin')}
+            className="py-2 px-3 bg-slate-900 hover:bg-slate-800 text-amber-300 font-black rounded-xl text-[11px] shadow-sm active:scale-95 transition-all flex-shrink-0"
+          >
+            START AGAIN
+          </button>
+        </div>
+      ) : null}
+
       {/* 3. Large Action Buttons */}
       <div className="grid grid-cols-2 gap-3">
         <button
-          onClick={() => setActiveTab('shops')}
+          onClick={() => requireActiveDay(() => setActiveTab('shops'))}
           className="bg-gradient-to-br from-red-700 to-red-800 hover:from-red-800 hover:to-red-900 text-white p-4 rounded-2xl shadow-md font-extrabold text-sm flex flex-col items-center justify-center gap-2 active:scale-95 transition-all border border-red-600"
         >
           <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center">
@@ -502,8 +578,10 @@ export default function MarketerDashboard({ activeTab, setActiveTab }) {
 
         <button
           onClick={() => {
-            setEditingOrder(null);
-            setActiveModal('order');
+            requireActiveDay(() => {
+              setEditingOrder(null);
+              setActiveModal('order');
+            });
           }}
           className="bg-gradient-to-br from-amber-600 to-orange-600 hover:from-amber-700 hover:to-orange-700 text-white p-4 rounded-2xl shadow-md font-extrabold text-sm flex flex-col items-center justify-center gap-2 active:scale-95 transition-all border border-amber-500"
         >
@@ -514,7 +592,7 @@ export default function MarketerDashboard({ activeTab, setActiveTab }) {
         </button>
 
         <button
-          onClick={() => setActiveModal('collection')}
+          onClick={() => requireActiveDay(() => setActiveModal('collection'))}
           className="bg-gradient-to-br from-emerald-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white p-4 rounded-2xl shadow-md font-extrabold text-sm flex flex-col items-center justify-center gap-2 active:scale-95 transition-all border border-emerald-500"
         >
           <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center">
@@ -524,7 +602,7 @@ export default function MarketerDashboard({ activeTab, setActiveTab }) {
         </button>
 
         <button
-          onClick={() => setActiveModal('return')}
+          onClick={() => requireActiveDay(() => setActiveModal('return'))}
           className="bg-gradient-to-br from-slate-800 to-slate-900 hover:from-slate-900 hover:to-black text-white p-4 rounded-2xl shadow-md font-extrabold text-sm flex flex-col items-center justify-center gap-2 active:scale-95 transition-all border border-slate-700"
         >
           <div className="w-10 h-10 rounded-xl bg-white/10 flex items-center justify-center">
@@ -554,14 +632,14 @@ export default function MarketerDashboard({ activeTab, setActiveTab }) {
       {/* Secondary Quick Action Row */}
       <div className="grid grid-cols-3 gap-2">
         <button
-          onClick={() => setActiveModal('new_shop')}
+          onClick={() => requireActiveDay(() => setActiveModal('new_shop'))}
           className="bg-white p-3 rounded-2xl border border-slate-200 text-slate-800 font-bold text-xs flex flex-col items-center gap-1.5 shadow-xs hover:bg-slate-50 active:scale-95"
         >
           <UserPlus className="w-5 h-5 text-purple-600" />
           <span>NEW CUSTOMER</span>
         </button>
         <button
-          onClick={() => setActiveModal('followup')}
+          onClick={() => requireActiveDay(() => setActiveModal('followup'))}
           className="bg-white p-3 rounded-2xl border border-slate-200 text-slate-800 font-bold text-xs flex flex-col items-center gap-1.5 shadow-xs hover:bg-slate-50 active:scale-95"
         >
           <Clock className="w-5 h-5 text-amber-600" />
@@ -1447,6 +1525,13 @@ return (
       <ChangePasswordModal
         isOpen={showPasswordModal}
         onClose={() => setShowPasswordModal(false)}
+      />
+
+      {/* Logout Blocked Modal */}
+      <LogoutBlockedModal
+        isOpen={showBlockedLogoutModal}
+        onClose={() => setShowBlockedLogoutModal(false)}
+        onGoToEndDay={() => setActiveModal('eod')}
       />
     </>
   );
