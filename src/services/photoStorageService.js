@@ -4,6 +4,7 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 /**
  * Uploads a compressed image blob to Firebase Storage.
  * Provides resilient fallback for offline operations so field marketers never get blocked.
+ * Strict Workday Validation: Rejects upload if marketer day session is not ACTIVE.
  *
  * @param {Object} params
  * @param {Blob} params.blob - Compressed image blob
@@ -11,6 +12,8 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
  * @param {string} params.storagePath - Desired storage path in Firebase Storage
  * @param {string} [params.mimeType='image/webp'] - MIME type
  * @param {number} [params.compressedSizeKb=0] - Size in KB
+ * @param {boolean} [params.isDayActive=true] - Day active status flag
+ * @param {string} [params.role='MARKETER'] - User role ('ADMIN' or 'MARKETER')
  * @param {Object} [params.customMetadata={}] - Custom metadata attributes
  * @returns {Promise<{
  *   photoUrl: string,
@@ -27,9 +30,18 @@ export async function uploadPhotoToFirebaseStorage({
   storagePath,
   mimeType = 'image/webp',
   compressedSizeKb = 0,
+  isDayActive = true,
+  role = 'MARKETER',
   customMetadata = {},
 }) {
   const timestamp = new Date().toISOString();
+
+  // Strict Workday Validation: Block Storage writes if day session is not active for Marketer
+  if (role !== 'ADMIN' && !isDayActive) {
+    const errorMsg = 'Photo upload blocked: Your workday has not started. Please submit Start My Day first.';
+    console.error(errorMsg);
+    throw new Error(errorMsg);
+  }
 
   // If no blob is available or offline, return local dataUrl safely
   if (!blob || !navigator.onLine) {
@@ -92,6 +104,8 @@ export async function uploadCollectionSlipPhoto({
   mimeType = 'image/webp',
   shopId = '',
   marketerId = '',
+  isDayActive = true,
+  role = 'MARKETER',
 }) {
   const ext = mimeType.includes('webp') ? 'webp' : 'jpg';
   const storagePath = `collection-photos/${collectionId || 'pending'}/${photoId}.${ext}`;
@@ -102,6 +116,8 @@ export async function uploadCollectionSlipPhoto({
     storagePath,
     mimeType,
     compressedSizeKb,
+    isDayActive,
+    role,
     customMetadata: {
       collectionId: String(collectionId || ''),
       shopId: String(shopId || ''),
@@ -124,6 +140,8 @@ export async function uploadShopVisitPhoto({
   mimeType = 'image/webp',
   shopName = '',
   marketerId = '',
+  isDayActive = true,
+  role = 'MARKETER',
 }) {
   const ext = mimeType.includes('webp') ? 'webp' : 'jpg';
   const folderKey = shopId || visitId || 'general';
@@ -135,6 +153,8 @@ export async function uploadShopVisitPhoto({
     storagePath,
     mimeType,
     compressedSizeKb,
+    isDayActive,
+    role,
     customMetadata: {
       shopId: String(shopId || ''),
       shopName: String(shopName || ''),

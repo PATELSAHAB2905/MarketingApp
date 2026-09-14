@@ -16,7 +16,7 @@ import { uploadShopVisitPhoto } from '../../services/photoStorageService';
 
 export default function ShopPhotoCapture({ shop, visitId, onPhotoSaved }) {
   const { currentUser } = useAuth();
-  const { shopPhotos = [], addShopPhoto, deleteShopPhoto, getFormattedDate, getFormattedTime } = useData();
+  const { shopPhotos = [], addShopPhoto, deleteShopPhoto, getFormattedDate, getFormattedTime, isMarketerDayActive } = useData();
 
   // Compressed result: { blob, dataUrl, originalSizeKb, compressedSizeKb, mimeType, width, height, compressionRatio }
   const [compressedResult, setCompressedResult] = useState(null);
@@ -63,6 +63,12 @@ export default function ShopPhotoCapture({ shop, visitId, onPhotoSaved }) {
 
   const handleSavePhoto = async () => {
     if (!compressedResult) return;
+    const isDayActive = isMarketerDayActive ? isMarketerDayActive(currentUser?.id) : true;
+    if (currentUser?.role !== 'ADMIN' && !isDayActive) {
+      alert('Your workday has not started. Please submit Start My Day first before capturing a shop photo.');
+      return;
+    }
+
     setSaving(true);
     setErrorMessage('');
 
@@ -80,6 +86,8 @@ export default function ShopPhotoCapture({ shop, visitId, onPhotoSaved }) {
         mimeType: compressedResult.mimeType,
         shopName: shop.name,
         marketerId: currentUser?.id,
+        isDayActive,
+        role: currentUser?.role || 'MARKETER',
       });
 
       const saved = addShopPhoto({

@@ -21,7 +21,7 @@ import { uploadCollectionSlipPhoto } from '../../services/photoStorageService';
 
 export default function CollectionForm({ shop, editingCollection, onClose, onCollectionSubmitted }) {
   const { currentUser } = useAuth();
-  const { shops, creditPolicy, getFormattedDate, getFormattedTime, getTodayMarket, addCollection, updateCollection } = useData();
+  const { shops, creditPolicy, getFormattedDate, getFormattedTime, getTodayMarket, addCollection, updateCollection, isMarketerDayActive } = useData();
 
   const [selectedShopId, setSelectedShopId] = useState(
     editingCollection ? editingCollection.shopId : (shop ? shop.id : (shops[0]?.id || ''))
@@ -107,6 +107,13 @@ export default function CollectionForm({ shop, editingCollection, onClose, onCol
 
   const executeSave = async () => {
     setShowConfirmModal(false);
+
+    const isDayActive = isMarketerDayActive ? isMarketerDayActive(currentUser?.id) : true;
+    if (currentUser?.role !== 'ADMIN' && !isDayActive) {
+      alert('Your workday has not started. Please submit Start My Day first before recording a collection.');
+      return;
+    }
+
     setSubmitting(true);
 
     try {
@@ -125,6 +132,8 @@ export default function CollectionForm({ shop, editingCollection, onClose, onCol
           mimeType: compressedSlip.mimeType,
           shopId: targetShop.id,
           marketerId: currentUser?.id,
+          isDayActive,
+          role: currentUser?.role || 'MARKETER',
         });
 
         slipPhotoUrl = uploadRes.photoUrl || compressedSlip.dataUrl;

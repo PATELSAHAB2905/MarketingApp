@@ -217,7 +217,7 @@ export default function MarketerDashboard({ activeTab, setActiveTab }) {
           <ShopsList
             onSelectShop={handleSelectShop}
             onGoHome={() => setActiveTab('home')}
-            onAddNewShop={() => setActiveModal('new_shop')}
+            onAddNewShop={() => requireActiveDay(() => setActiveModal('new_shop'))}
           />
         </div>
       );
@@ -229,7 +229,7 @@ export default function MarketerDashboard({ activeTab, setActiveTab }) {
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-bold text-slate-800">TODAY'S FOLLOW-UPS</h2>
             <button
-              onClick={() => setActiveModal('followup')}
+              onClick={() => requireActiveDay(() => setActiveModal('followup'))}
               className="px-3 py-1.5 bg-red-700 text-white rounded-xl text-xs font-bold flex items-center gap-1"
             >
               <PlusCircle className="w-4 h-4" />
@@ -333,7 +333,7 @@ export default function MarketerDashboard({ activeTab, setActiveTab }) {
           </button>
 
           <button
-            onClick={() => setActiveModal('feedback')}
+            onClick={() => requireActiveDay(() => setActiveModal('feedback'))}
             className="w-full bg-white p-4 rounded-2xl border border-slate-200 flex items-center justify-between hover:bg-slate-50"
           >
             <div className="flex items-center gap-3">
@@ -349,7 +349,7 @@ export default function MarketerDashboard({ activeTab, setActiveTab }) {
           </button>
 
           <button
-            onClick={() => setActiveModal('complaint')}
+            onClick={() => requireActiveDay(() => setActiveModal('complaint'))}
             className="w-full bg-white p-4 rounded-2xl border border-slate-200 flex items-center justify-between hover:bg-slate-50"
           >
             <div className="flex items-center gap-3">

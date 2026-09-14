@@ -1055,7 +1055,26 @@ export const DataProvider = ({ children }) => {
     return updatedRecord;
   };
 
+  /**
+   * Strict Marketer Workday Active Validation
+   * Checks if day session is currently ACTIVE for the given marketerId on today's date.
+   */
+  const isMarketerDayActive = (marketerId) => {
+    if (!marketerId) return false;
+    const today = getFormattedDate();
+    const chk = checkIns.find(
+      (c) => c.marketerId === marketerId && (c.date === today || c.createdDate === today)
+    );
+    return Boolean(chk && chk.status === 'ACTIVE' && !chk.endTime && !chk.isDayEnded);
+  };
+
   const addShopVisit = (visitData) => {
+    // Strict Workday Validation: Block Marketers from logging visits without Start My Day
+    if (visitData.marketerId && visitData.role !== 'ADMIN' && !isMarketerDayActive(visitData.marketerId)) {
+      alert('Your workday has not started. Please submit Start My Day first before logging a shop visit.');
+      return null;
+    }
+
     const newVisit = {
       id: `vst-${Date.now()}`,
       createdDate: getFormattedDate(),
@@ -1087,6 +1106,12 @@ export const DataProvider = ({ children }) => {
 
   // ======= SHOP PHOTOS (GENERAL VISIT & DISPLAY PHOTOS) =======
   const addShopPhoto = (photoData) => {
+    // Strict Workday Validation: Block Marketers from uploading photos without Start My Day
+    if (photoData.marketerId && photoData.role !== 'ADMIN' && !isMarketerDayActive(photoData.marketerId)) {
+      alert('Your workday has not started. Please submit Start My Day first before capturing a shop photo.');
+      return null;
+    }
+
     const photoUrl = photoData.photoUrl || photoData.imageData;
     const newPhoto = {
       id: photoData.id || `photo-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
@@ -1159,6 +1184,12 @@ export const DataProvider = ({ children }) => {
 
   // Add Order with unique ORD-DDMMYYYY-NNNN ID + sync status tracking
   const addOrder = (orderData) => {
+    // Strict Workday Validation: Block Marketers from creating orders without Start My Day
+    if (orderData.marketerId && orderData.role !== 'ADMIN' && !isMarketerDayActive(orderData.marketerId)) {
+      alert('Your workday has not started. Please submit Start My Day first before creating an order.');
+      return null;
+    }
+
     const todayStr = orderData.date || getFormattedDate();
     const newOrder = {
       id: generateOrderId(todayStr),
@@ -1223,6 +1254,11 @@ export const DataProvider = ({ children }) => {
 
   // Update existing order (when marketer edits an order)
   const updateOrder = (orderId, updatedOrderData) => {
+    const marketerId = updatedOrderData.marketerId;
+    if (marketerId && updatedOrderData.role !== 'ADMIN' && !isMarketerDayActive(marketerId)) {
+      alert('Your workday has not started. Please submit Start My Day first before editing an order.');
+      return null;
+    }
     let oldOrder = null;
     let savedOrder = null;
 
@@ -1273,6 +1309,12 @@ export const DataProvider = ({ children }) => {
   };
 
   const addCollection = (collectionData) => {
+    // Strict Workday Validation: Block Marketers from recording collections without Start My Day
+    if (collectionData.marketerId && collectionData.role !== 'ADMIN' && !isMarketerDayActive(collectionData.marketerId)) {
+      alert('Your workday has not started. Please submit Start My Day first before recording a collection.');
+      return null;
+    }
+
     const newColl = {
       id: collectionData.id || `col-${Date.now()}`,
       receiptNumber: collectionData.receiptNumber || `RCP-${Math.floor(100000 + Math.random() * 900000)}`,
@@ -1309,6 +1351,12 @@ export const DataProvider = ({ children }) => {
 
   // Update existing collection in-place (when marketer edits today's collection)
   const updateCollection = (collectionId, updatedCollectionData) => {
+    const marketerId = updatedCollectionData.marketerId;
+    if (marketerId && updatedCollectionData.role !== 'ADMIN' && !isMarketerDayActive(marketerId)) {
+      alert('Your workday has not started. Please submit Start My Day first before editing a collection.');
+      return null;
+    }
+
     let oldCollection = null;
     let savedCollection = null;
 
@@ -1385,6 +1433,12 @@ export const DataProvider = ({ children }) => {
   };
 
   const addReturn = (returnData) => {
+    // Strict Workday Validation: Block Marketers from recording returns without Start My Day
+    if (returnData.marketerId && returnData.role !== 'ADMIN' && !isMarketerDayActive(returnData.marketerId)) {
+      alert('Your workday has not started. Please submit Start My Day first before recording a return.');
+      return null;
+    }
+
     const newReturn = {
       id: `ret-${Date.now()}`,
       createdDate: getFormattedDate(),
@@ -1420,6 +1474,11 @@ export const DataProvider = ({ children }) => {
 
   // Update existing return in-place (when marketer edits today's return)
   const updateReturn = (returnId, updatedReturnData) => {
+    const marketerId = updatedReturnData.marketerId;
+    if (marketerId && updatedReturnData.role !== 'ADMIN' && !isMarketerDayActive(marketerId)) {
+      alert('Your workday has not started. Please submit Start My Day first before editing a return.');
+      return null;
+    }
     let oldReturn = null;
     let savedReturn = null;
 
@@ -1454,6 +1513,12 @@ export const DataProvider = ({ children }) => {
   };
 
   const addComplaint = (complaintData) => {
+    // Strict Workday Validation: Block Marketers from logging complaints without Start My Day
+    if (complaintData.marketerId && complaintData.role !== 'ADMIN' && !isMarketerDayActive(complaintData.marketerId)) {
+      alert('Your workday has not started. Please submit Start My Day first before registering a complaint.');
+      return null;
+    }
+
     const newComplaint = {
       id: `cmp-${Date.now()}`,
       createdDate: getFormattedDate(),
@@ -1489,6 +1554,12 @@ export const DataProvider = ({ children }) => {
   };
 
   const addFollowup = (followupData) => {
+    // Strict Workday Validation: Block Marketers from logging follow-ups without Start My Day
+    if (followupData.marketerId && followupData.role !== 'ADMIN' && !isMarketerDayActive(followupData.marketerId)) {
+      alert('Your workday has not started. Please submit Start My Day first before logging a follow-up.');
+      return null;
+    }
+
     const newFollowup = {
       id: `flw-${Date.now()}`,
       createdDate: getFormattedDate(),
@@ -1504,6 +1575,13 @@ export const DataProvider = ({ children }) => {
   };
 
   const addNewShop = (shopData) => {
+    // Strict Workday Validation: Block Marketers from creating shops without Start My Day
+    const marketerId = shopData.createdByMarketerId || shopData.marketerId;
+    if (marketerId && shopData.role !== 'ADMIN' && !isMarketerDayActive(marketerId)) {
+      alert('Your workday has not started. Please submit Start My Day first before registering a new shop.');
+      return null;
+    }
+
     const newShop = {
       id: `shop-${Date.now()}`,
       status: shopData.isLead ? 'Lead' : 'Customer',
@@ -1697,6 +1775,12 @@ export const DataProvider = ({ children }) => {
   };
 
   const addMarketFeedback = (feedbackData) => {
+    // Strict Workday Validation: Block Marketers from submitting feedback without Start My Day
+    if (feedbackData.marketerId && feedbackData.role !== 'ADMIN' && !isMarketerDayActive(feedbackData.marketerId)) {
+      alert('Your workday has not started. Please submit Start My Day first before submitting market feedback.');
+      return null;
+    }
+
     const newFb = {
       id: `fbk-${Date.now()}`,
       createdDate: getFormattedDate(),
@@ -1862,6 +1946,7 @@ export const DataProvider = ({ children }) => {
         gstConfig, setGstConfig,
         creditPolicy, setCreditPolicy,
         checkIns, addCheckIn, endMarketerDay, adminEndMarketerDay,
+        isMarketerDayActive,
         visits, addShopVisit,
         shopPhotos, setShopPhotos, addShopPhoto, deleteShopPhoto,
         orders, addOrder, updateOrder, updateOrderSyncStatus,
