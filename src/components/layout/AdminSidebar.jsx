@@ -56,7 +56,7 @@ export default function AdminSidebar({ activeTab, setActiveTab }) {
     {
       title: 'MANAGEMENT',
       items: [
-        { id: 'old-data-import', label: 'Old Party Data Import', icon: Database },
+        { id: 'old-data-import', label: 'Historical Data Import', icon: Database },
         { id: 'fuel', label: 'Fuel Management', icon: Fuel },
         { id: 'targets', label: 'Targets', icon: Target },
         { id: 'reports', label: 'Reports & Analytics', icon: BarChart },

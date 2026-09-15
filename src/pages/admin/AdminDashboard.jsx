@@ -141,10 +141,10 @@ export default function AdminDashboard({ onNavigate }) {
           </div>
           <div>
             <h3 className="text-sm font-black text-slate-950 uppercase">
-              OLD PARTY DATA IMPORT (MARKET-LINKED)
+              HISTORICAL DATA IMPORT (MARKET-LINKED)
             </h3>
             <p className="text-xs text-slate-900 font-semibold">
-              Upload customer Excel sheets with Receivable & Payable balances linked to Markets & Marketers
+              Upload customer Excel sheets with Statement & Item Details linked to Markets & Marketers
             </p>
           </div>
         </div>
@@ -153,7 +153,7 @@ export default function AdminDashboard({ onNavigate }) {
           onClick={() => onNavigate && onNavigate('old-data-import')}
           className="py-2 px-4 bg-slate-950 hover:bg-slate-900 text-amber-300 rounded-xl font-black text-xs flex items-center gap-1.5 shadow-md active:scale-95 transition-all whitespace-nowrap"
         >
-          <span>Import Old Parties →</span>
+          <span>Import Historical Data →</span>
         </button>
       </div>
 
