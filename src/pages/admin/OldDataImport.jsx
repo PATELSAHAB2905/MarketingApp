@@ -181,6 +181,12 @@ export default function OldDataImport({ onNavigate }) {
     setShowAddMarketModal(false);
   };
 
+  // Single-Party / Default Party Context
+  const [defaultPartyName, setDefaultPartyName] = useState('');
+  const [defaultPartyPhone, setDefaultPartyPhone] = useState('');
+  const [statementHeaders, setStatementHeaders] = useState([]);
+  const [itemHeaders, setItemHeaders] = useState([]);
+
   // Parsed Multi-Sheet Structures
   const [rawSheets, setRawSheets] = useState({}); // { sheetName: rawRows[][] }
   const [sheetNamesList, setSheetNamesList] = useState([]);
@@ -361,7 +367,7 @@ export default function OldDataImport({ onNavigate }) {
 
         workbook.SheetNames.forEach((sName) => {
           const sLower = sName.toLowerCase();
-          if (sLower.includes('statement') || sLower.includes('party') || sLower.includes('ledger') || sLower.includes('report')) {
+          if (sLower.includes('statement') || sLower.includes('party') || sLower.includes('ledger') || sLower.includes('report') || sLower.includes('transaction')) {
             if (!detectedStatementSheet) detectedStatementSheet = sName;
           }
           if (sLower.includes('item') || sLower.includes('product') || sLower.includes('detail') || sLower.includes('line')) {
@@ -376,6 +382,60 @@ export default function OldDataImport({ onNavigate }) {
 
         setStatementSheetName(detectedStatementSheet);
         setItemsSheetName(detectedItemsSheet);
+
+        // Auto-extract Party metadata from top rows of Statement Sheet
+        const stmtRows = sheetsData[detectedStatementSheet] || [];
+        let extractedParty = '';
+        let extractedPhone = '';
+
+        for (let i = 0; i < Math.min(15, stmtRows.length); i++) {
+          const row = stmtRows[i] || [];
+          for (let j = 0; j < row.length; j++) {
+            const cell = String(row[j] || '').trim();
+            if (/^(party\s*name|customer\s*name|account\s*name|party|customer|m\/s)\s*[:=-]/i.test(cell)) {
+              const parts = cell.split(/[:=-]/);
+              if (parts[1] && parts[1].trim()) {
+                extractedParty = parts[1].trim();
+              } else if (row[j + 1]) {
+                extractedParty = String(row[j + 1]).trim();
+              }
+            } else if (/^(phone|mobile|contact|tel)\s*[:=-]/i.test(cell)) {
+              const parts = cell.split(/[:=-]/);
+              if (parts[1] && parts[1].trim()) {
+                extractedPhone = parts[1].trim().replace(/[^0-9]/g, '');
+              } else if (row[j + 1]) {
+                extractedPhone = String(row[j + 1]).trim().replace(/[^0-9]/g, '');
+              }
+            }
+          }
+        }
+
+        // Fallback party extraction from Sheet Name or File Name
+        if (!extractedParty) {
+          const sNameLower = detectedStatementSheet.toLowerCase();
+          if (
+            !sNameLower.startsWith('sheet') &&
+            !sNameLower.includes('statement') &&
+            !sNameLower.includes('report') &&
+            !sNameLower.includes('transaction')
+          ) {
+            extractedParty = detectedStatementSheet;
+          } else if (uploadedFile.name) {
+            const cleanName = uploadedFile.name
+              .replace(/\.(xlsx|xls|csv)$/i, '')
+              .replace(/party[\s_-]*statement/gi, '')
+              .replace(/statement/gi, '')
+              .replace(/report/gi, '')
+              .replace(/[_-]+/g, ' ')
+              .trim();
+            if (cleanName && cleanName.length > 2) {
+              extractedParty = cleanName;
+            }
+          }
+        }
+
+        setDefaultPartyName(extractedParty);
+        setDefaultPartyPhone(extractedPhone);
 
         // Auto Map Columns for Statement Sheet
         autoMapStatementColumns(sheetsData[detectedStatementSheet] || []);
@@ -406,21 +466,22 @@ export default function OldDataImport({ onNavigate }) {
   const autoMapStatementColumns = (sheetRows = []) => {
     if (!sheetRows || sheetRows.length === 0) return;
 
-    // Scan first 10 rows for header
+    // Scan up to first 25 rows for header row
     let headerIdx = 0;
-    for (let i = 0; i < Math.min(10, sheetRows.length); i++) {
+    for (let i = 0; i < Math.min(25, sheetRows.length); i++) {
       const row = (sheetRows[i] || []).map((c) => String(c).toLowerCase().trim());
       if (
         row.some(
           (c) =>
-            c.includes('party') ||
             c.includes('date') ||
+            c.includes('txn type') ||
+            c.includes('ref no') ||
             c.includes('invoice') ||
             c.includes('bill') ||
-            c.includes('txn') ||
-            c.includes('amount') ||
+            c.includes('total') ||
             c.includes('received') ||
-            c.includes('balance')
+            c.includes('balance') ||
+            c.includes('party')
         )
       ) {
         headerIdx = i;
@@ -428,25 +489,27 @@ export default function OldDataImport({ onNavigate }) {
       }
     }
 
-    const headers = (sheetRows[headerIdx] || []).map((c) => String(c).toLowerCase().trim());
+    const rawHeadersRow = sheetRows[headerIdx] || [];
+    setStatementHeaders(rawHeadersRow);
+    const headers = rawHeadersRow.map((c) => String(c).toLowerCase().trim());
 
     const findCol = (aliases) => {
       return headers.findIndex((h) => aliases.some((a) => h === a || h.includes(a)));
     };
 
     setStatementColMap({
-      date: findCol(['date', 'txn date', 'invoice date', 'bill date', 'entry date']),
-      txnType: findCol(['txn type', 'transaction type', 'type', 'vch type', 'particulars']),
-      invoiceNo: findCol(['invoice no', 'bill no', 'vch no', 'ref no', 'invoice', 'bill', 'document']),
-      partyName: findCol(['party name', 'party', 'customer name', 'shop name', 'account name', 'customer']),
+      date: findCol(['date', 'txn date', 'invoice date', 'bill date', 'entry date', 'dt']),
+      txnType: findCol(['txn type', 'transaction type', 'type', 'vch type', 'particulars', 'particular', 'voucher type']),
+      invoiceNo: findCol(['ref no.', 'ref no', 'invoice no', 'bill no', 'vch no', 'ref', 'invoice', 'bill', 'document', 'voucher no']),
+      partyName: findCol(['party name', 'party', 'customer name', 'shop name', 'account name', 'customer', 'account']),
       phone: findCol(['phone', 'mobile', 'contact']),
       email: findCol(['email', 'mail']),
-      totalAmount: findCol(['total amount', 'total', 'debit', 'sale amount', 'invoice amount', 'amount']),
-      received: findCol(['received', 'paid', 'credit', 'payment', 'collection', 'payment-in']),
-      receivableBalance: findCol(['receivable balance', 'receivable', 'closing balance', 'balance']),
+      totalAmount: findCol(['total', 'total amount', 'debit', 'sale amount', 'invoice amount', 'amount', 'net total']),
+      received: findCol(['received / paid', 'received/paid', 'received', 'paid', 'credit', 'payment', 'collection', 'payment-in', 'amount received']),
+      receivableBalance: findCol(['receivable balance', 'receivable', 'closing balance', 'balance', 'running balance']),
       payableBalance: findCol(['payable balance', 'payable']),
-      paymentType: findCol(['payment type', 'payment mode', 'mode', 'type']),
-      paymentRef: findCol(['payment reference', 'ref no', 'cheque no', 'utr', 'transaction id']),
+      paymentType: findCol(['payment type', 'payment mode', 'mode', 'pay mode']),
+      paymentRef: findCol(['payment reference', 'ref no', 'cheque no', 'utr', 'transaction id', 'chq no']),
       description: findCol(['description', 'narration', 'remark', 'remarks', 'notes']),
     });
   };
@@ -456,7 +519,7 @@ export default function OldDataImport({ onNavigate }) {
     if (!sheetRows || sheetRows.length === 0) return;
 
     let headerIdx = 0;
-    for (let i = 0; i < Math.min(10, sheetRows.length); i++) {
+    for (let i = 0; i < Math.min(25, sheetRows.length); i++) {
       const row = (sheetRows[i] || []).map((c) => String(c).toLowerCase().trim());
       if (
         row.some(
@@ -475,15 +538,17 @@ export default function OldDataImport({ onNavigate }) {
       }
     }
 
-    const headers = (sheetRows[headerIdx] || []).map((c) => String(c).toLowerCase().trim());
+    const rawItemHeadersRow = sheetRows[headerIdx] || [];
+    setItemHeaders(rawItemHeadersRow);
+    const headers = rawItemHeadersRow.map((c) => String(c).toLowerCase().trim());
     const findCol = (aliases) => headers.findIndex((h) => aliases.some((a) => h === a || h.includes(a)));
 
     setItemColMap({
       date: findCol(['date', 'invoice date', 'bill date']),
-      invoiceNo: findCol(['invoice no', 'bill no', 'vch no', 'invoice', 'bill']),
+      invoiceNo: findCol(['ref no.', 'ref no', 'invoice no', 'bill no', 'vch no', 'invoice', 'bill']),
       partyName: findCol(['party name', 'party', 'customer name', 'shop name']),
       itemName: findCol(['item name', 'product name', 'item', 'product', 'goods description', 'description']),
-      itemCode: findCol(['item code', 'product code', 'code', 'sku']),
+      itemCode: findCol(['item code', 'product code', 'code', 'sku', 'barcode']),
       hsn: findCol(['hsn', 'hsn/sac', 'sac']),
       category: findCol(['category', 'group']),
       quantity: findCol(['quantity', 'qty', 'qty (kg)', 'total kg', 'weight']),
@@ -593,15 +658,15 @@ export default function OldDataImport({ onNavigate }) {
 
       // --- B. Process Party Statement Report Sheet ---
       let stmtHeaderIdx = 0;
-      for (let i = 0; i < Math.min(10, stmtRows.length); i++) {
+      for (let i = 0; i < Math.min(25, stmtRows.length); i++) {
         const row = (stmtRows[i] || []).map((c) => String(c).toLowerCase().trim());
-        if (row.some((c) => c.includes('party') || c.includes('date') || c.includes('amount') || c.includes('balance'))) {
+        if (row.some((c) => c.includes('party') || c.includes('date') || c.includes('txn type') || c.includes('amount') || c.includes('balance') || c.includes('total'))) {
           stmtHeaderIdx = i;
           break;
         }
       }
 
-      let runningPartyName = '';
+      let runningPartyName = defaultPartyName || '';
 
       for (let r = stmtHeaderIdx + 1; r < stmtRows.length; r++) {
         const row = stmtRows[r];
@@ -609,7 +674,7 @@ export default function OldDataImport({ onNavigate }) {
 
         let rawParty = statementColMap.partyName !== -1 ? String(row[statementColMap.partyName] || '').trim() : '';
         if (rawParty) runningPartyName = rawParty;
-        else rawParty = runningPartyName;
+        else rawParty = runningPartyName || defaultPartyName;
 
         const rawDate = statementColMap.date !== -1 ? parseDateString(row[statementColMap.date]) : '';
         const rawType = statementColMap.txnType !== -1 ? String(row[statementColMap.txnType] || '').trim() : '';
@@ -621,7 +686,7 @@ export default function OldDataImport({ onNavigate }) {
         const rawPayType = statementColMap.paymentType !== -1 ? String(row[statementColMap.paymentType] || '').trim() : 'Cash';
         const rawPayRef = statementColMap.paymentRef !== -1 ? String(row[statementColMap.paymentRef] || '').trim() : '';
         const rawDesc = statementColMap.description !== -1 ? String(row[statementColMap.description] || '').trim() : '';
-        const rawPhone = statementColMap.phone !== -1 ? String(row[statementColMap.phone] || '').replace(/[^0-9]/g, '').trim() : '';
+        const rawPhone = statementColMap.phone !== -1 ? String(row[statementColMap.phone] || '').replace(/[^0-9]/g, '').trim() : (defaultPartyPhone || '');
         const rawEmail = statementColMap.email !== -1 ? String(row[statementColMap.email] || '').trim() : '';
 
         // Skip total / summary row
@@ -692,7 +757,7 @@ export default function OldDataImport({ onNavigate }) {
 
           const linkedItems = itemsByInvoiceMap.get(billNo.toLowerCase().trim()) || [];
           const totalKgFromItems = linkedItems.reduce((sum, it) => sum + (it.quantityKg || 0), 0);
-          const computedSubtotal = rawTotal || linkedItems.reduce((sum, it) => sum + (it.amount || 0), 0);
+          const computedSubtotal = rawTotal || (rawRec + rawRecBal) || linkedItems.reduce((sum, it) => sum + (it.amount || 0), 0);
 
           const orderRecord = {
             id: `HIST-ORD-${billNo}-${Date.now()}-${r}`,
@@ -709,6 +774,7 @@ export default function OldDataImport({ onNavigate }) {
             totalPouches: 0,
             subtotal: computedSubtotal,
             grandTotal: computedSubtotal,
+            paidAmount: rawRec,
             items: linkedItems.length > 0 ? linkedItems : [
               {
                 productName: rawDesc || 'Historical Order Sale',
@@ -728,9 +794,38 @@ export default function OldDataImport({ onNavigate }) {
             isDuplicate,
           };
           detectedOrdersList.push(orderRecord);
+
+          // If immediate payment received on this sale, record the collection payment as well
+          if (rawRec > 0) {
+            const colRefNo = `RCP-${billNo}`;
+            const colKey = `${normPName}_${rawDate}_${rawRec}_${colRefNo}`;
+            const isColDuplicate = existingCollectionKeys.has(colKey);
+            const saleCollection = {
+              id: `HIST-COL-SALE-${billNo}-${Date.now()}-${r}`,
+              receiptNumber: colRefNo,
+              refNo: colRefNo,
+              invoiceRef: billNo,
+              shopId: currentParty.id,
+              shopName: rawParty,
+              marketId: selectedMarketId,
+              marketName: selectedMarket?.name || 'Market',
+              date: rawDate || getFormattedDate(),
+              time: '10:05 AM',
+              amount: rawRec,
+              paymentMode: rawPayType || 'Cash',
+              description: `Payment against Invoice ${billNo}`,
+              remark: `Payment against Invoice ${billNo}`,
+              source: 'OLD_IMPORT',
+              dataSource: 'OLD IMPORT',
+              isHistorical: true,
+              isDuplicate: isColDuplicate,
+            };
+            detectedCollectionsList.push(saleCollection);
+          }
         } else if (txnType === 'COLLECTION') {
           const refNo = rawPayRef || rawInv || `HIST-RCP-${r}`;
-          const colKey = `${normPName}_${rawDate}_${rawRec}`;
+          const colAmount = rawRec > 0 ? rawRec : rawTotal;
+          const colKey = `${normPName}_${rawDate}_${colAmount}`;
           const isDuplicate = existingCollectionKeys.has(colKey);
 
           const collectionRecord = {
@@ -744,7 +839,7 @@ export default function OldDataImport({ onNavigate }) {
             marketName: selectedMarket?.name || 'Market',
             date: rawDate || getFormattedDate(),
             time: '11:00 AM',
-            amount: rawRec,
+            amount: colAmount,
             paymentMode: rawPayType || 'Cash',
             description: rawDesc || 'Historical Payment-In Received',
             remark: rawDesc || 'Historical Payment-In Received',
@@ -1811,6 +1906,46 @@ export default function OldDataImport({ onNavigate }) {
                     </p>
                   </div>
 
+                  {/* Party Context Card (Single-Party Statement / Default) */}
+                  <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
+                    <div className="flex justify-between items-center">
+                      <h3 className="font-black text-slate-900 text-xs uppercase flex items-center gap-1.5">
+                        <Store className="w-4 h-4 text-red-700" />
+                        <span>Target Party (For Single-Party Statement / Default)</span>
+                      </h3>
+                      {defaultPartyName && (
+                        <span className="text-[10px] font-black px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                          ✨ Detected: {defaultPartyName}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-slate-500 font-medium">
+                      If importing a single party's statement (e.g. <em>Aakash Rathore Kirana</em>), verify or enter the customer name below. For multi-party sheets, the party column takes precedence.
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                      <div>
+                        <label className="font-bold text-slate-700 block mb-1">Customer / Party Name *</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Aakash Rathore Kirana Jhadla"
+                          value={defaultPartyName}
+                          onChange={(e) => setDefaultPartyName(e.target.value)}
+                          className="w-full p-2.5 bg-white border border-slate-300 focus:border-red-600 rounded-xl font-bold text-slate-900 outline-none"
+                        />
+                      </div>
+                      <div>
+                        <label className="font-bold text-slate-700 block mb-1">Customer Mobile / Phone</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. 9826012345"
+                          value={defaultPartyPhone}
+                          onChange={(e) => setDefaultPartyPhone(e.target.value)}
+                          className="w-full p-2.5 bg-white border border-slate-300 focus:border-red-600 rounded-xl font-bold text-slate-900 outline-none"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
                   {/* Mapping 1: Statement Sheet */}
                   <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
                     <div className="flex justify-between items-center">
@@ -1822,14 +1957,14 @@ export default function OldDataImport({ onNavigate }) {
 
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
                       <div>
-                        <label className="font-bold text-slate-600 block mb-1">Party Name Column *</label>
+                        <label className="font-bold text-slate-600 block mb-1">Party Name Column</label>
                         <select
                           value={statementColMap.partyName}
                           onChange={(e) => setStatementColMap({ ...statementColMap, partyName: Number(e.target.value) })}
                           className="w-full p-2 bg-white border border-slate-300 rounded-xl font-bold"
                         >
-                          <option value={-1}>-- Select Column --</option>
-                          {(rawSheets[statementSheetName]?.[0] || []).map((col, idx) => (
+                          <option value={-1}>-- Not In Table (Use Target Party Above) --</option>
+                          {(statementHeaders.length > 0 ? statementHeaders : rawSheets[statementSheetName]?.[0] || []).map((col, idx) => (
                             <option key={idx} value={idx}>
                               Col {idx + 1}: {col || `Column ${idx + 1}`}
                             </option>
@@ -1838,14 +1973,30 @@ export default function OldDataImport({ onNavigate }) {
                       </div>
 
                       <div>
-                        <label className="font-bold text-slate-600 block mb-1">Invoice / Bill No Column</label>
+                        <label className="font-bold text-slate-600 block mb-1">Txn Type Column (Sale/Payment-In/Return)</label>
+                        <select
+                          value={statementColMap.txnType}
+                          onChange={(e) => setStatementColMap({ ...statementColMap, txnType: Number(e.target.value) })}
+                          className="w-full p-2 bg-white border border-slate-300 rounded-xl font-bold"
+                        >
+                          <option value={-1}>-- Auto Detect from Debit/Credit --</option>
+                          {(statementHeaders.length > 0 ? statementHeaders : rawSheets[statementSheetName]?.[0] || []).map((col, idx) => (
+                            <option key={idx} value={idx}>
+                              Col {idx + 1}: {col || `Column ${idx + 1}`}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="font-bold text-slate-600 block mb-1">Invoice / Ref No Column</label>
                         <select
                           value={statementColMap.invoiceNo}
                           onChange={(e) => setStatementColMap({ ...statementColMap, invoiceNo: Number(e.target.value) })}
                           className="w-full p-2 bg-white border border-slate-300 rounded-xl font-bold"
                         >
                           <option value={-1}>-- Select Column --</option>
-                          {(rawSheets[statementSheetName]?.[0] || []).map((col, idx) => (
+                          {(statementHeaders.length > 0 ? statementHeaders : rawSheets[statementSheetName]?.[0] || []).map((col, idx) => (
                             <option key={idx} value={idx}>
                               Col {idx + 1}: {col || `Column ${idx + 1}`}
                             </option>
@@ -1861,7 +2012,7 @@ export default function OldDataImport({ onNavigate }) {
                           className="w-full p-2 bg-white border border-slate-300 rounded-xl font-bold"
                         >
                           <option value={-1}>-- Select Column --</option>
-                          {(rawSheets[statementSheetName]?.[0] || []).map((col, idx) => (
+                          {(statementHeaders.length > 0 ? statementHeaders : rawSheets[statementSheetName]?.[0] || []).map((col, idx) => (
                             <option key={idx} value={idx}>
                               Col {idx + 1}: {col || `Column ${idx + 1}`}
                             </option>
@@ -1870,14 +2021,14 @@ export default function OldDataImport({ onNavigate }) {
                       </div>
 
                       <div>
-                        <label className="font-bold text-slate-600 block mb-1">Sale / Total Amount Column</label>
+                        <label className="font-bold text-slate-600 block mb-1">Total / Sale Amount Column</label>
                         <select
                           value={statementColMap.totalAmount}
                           onChange={(e) => setStatementColMap({ ...statementColMap, totalAmount: Number(e.target.value) })}
                           className="w-full p-2 bg-white border border-slate-300 rounded-xl font-bold"
                         >
                           <option value={-1}>-- Select Column --</option>
-                          {(rawSheets[statementSheetName]?.[0] || []).map((col, idx) => (
+                          {(statementHeaders.length > 0 ? statementHeaders : rawSheets[statementSheetName]?.[0] || []).map((col, idx) => (
                             <option key={idx} value={idx}>
                               Col {idx + 1}: {col || `Column ${idx + 1}`}
                             </option>
@@ -1893,7 +2044,7 @@ export default function OldDataImport({ onNavigate }) {
                           className="w-full p-2 bg-white border border-slate-300 rounded-xl font-bold"
                         >
                           <option value={-1}>-- Select Column --</option>
-                          {(rawSheets[statementSheetName]?.[0] || []).map((col, idx) => (
+                          {(statementHeaders.length > 0 ? statementHeaders : rawSheets[statementSheetName]?.[0] || []).map((col, idx) => (
                             <option key={idx} value={idx}>
                               Col {idx + 1}: {col || `Column ${idx + 1}`}
                             </option>
@@ -1909,7 +2060,23 @@ export default function OldDataImport({ onNavigate }) {
                           className="w-full p-2 bg-white border border-slate-300 rounded-xl font-bold"
                         >
                           <option value={-1}>-- Select Column --</option>
-                          {(rawSheets[statementSheetName]?.[0] || []).map((col, idx) => (
+                          {(statementHeaders.length > 0 ? statementHeaders : rawSheets[statementSheetName]?.[0] || []).map((col, idx) => (
+                            <option key={idx} value={idx}>
+                              Col {idx + 1}: {col || `Column ${idx + 1}`}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="font-bold text-slate-600 block mb-1">Payment Type (Cash/Bank)</label>
+                        <select
+                          value={statementColMap.paymentType}
+                          onChange={(e) => setStatementColMap({ ...statementColMap, paymentType: Number(e.target.value) })}
+                          className="w-full p-2 bg-white border border-slate-300 rounded-xl font-bold"
+                        >
+                          <option value={-1}>-- Default (Cash) --</option>
+                          {(statementHeaders.length > 0 ? statementHeaders : rawSheets[statementSheetName]?.[0] || []).map((col, idx) => (
                             <option key={idx} value={idx}>
                               Col {idx + 1}: {col || `Column ${idx + 1}`}
                             </option>

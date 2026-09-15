@@ -423,6 +423,7 @@ Thank you for your business!`;
                   <th className="p-3 text-right">RECEIVED / PAID</th>
                   <th className="p-3 text-right">TXN BALANCE</th>
                   <th className="p-3 text-right">RECEIVABLE BALANCE</th>
+                  <th className="p-3 text-right">PAYABLE BALANCE</th>
                   <th className="p-3 text-center print:hidden">PRINT</th>
                 </tr>
               </thead>
@@ -440,13 +441,14 @@ Thank you for your business!`;
                   <td className="p-3 text-right font-black text-slate-900">
                     ₹ {ledgerData.openingBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                   </td>
+                  <td className="p-3 text-right text-slate-400">₹ 0.00</td>
                   <td className="p-3 text-center print:hidden">—</td>
                 </tr>
 
                 {/* Period Transactions */}
                 {vyaparTransactions.length === 0 ? (
                   <tr>
-                    <td colSpan={10} className="p-10 text-center text-slate-400 font-bold">
+                    <td colSpan={11} className="p-10 text-center text-slate-400 font-bold">
                       No transactions recorded in this period.
                     </td>
                   </tr>
@@ -498,6 +500,7 @@ Thank you for your business!`;
                       <td className="p-3 text-right font-black text-slate-900 text-sm">
                         ₹ {txn.runningBalance.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                       </td>
+                      <td className="p-3 text-right text-slate-400">₹ 0.00</td>
                       <td className="p-3 text-center print:hidden">
                         <button
                           type="button"

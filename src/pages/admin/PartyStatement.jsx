@@ -22,13 +22,18 @@ import {
 export default function PartyStatement() {
   const { shops, markets, marketRoutes, marketers, orders, collections, returns } = useData();
 
-  const [selectedShop, setSelectedShop] = useState(null);
+  const [selectedShopId, setSelectedShopId] = useState(() => shops[0]?.id || null);
+  const [viewDirectory, setViewDirectory] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedMarket, setSelectedMarket] = useState('ALL');
   const [selectedRoute, setSelectedRoute] = useState('ALL');
   const [selectedMarketer, setSelectedMarketer] = useState('ALL');
   const [outstandingFilter, setOutstandingFilter] = useState('ALL'); // 'ALL' | 'WITH_DUES' | 'ZERO'
   const [sortBy, setSortBy] = useState('OUTSTANDING_DESC'); // 'OUTSTANDING_DESC' | 'OUTSTANDING_ASC' | 'NAME_ASC' | 'LAST_ORDER'
+
+  const activeShop = useMemo(() => {
+    return shops.find((s) => s.id === selectedShopId) || shops[0] || null;
+  }, [shops, selectedShopId]);
 
   // Pre-calculate live outstanding & transaction metrics for all shops
   const enrichedShops = useMemo(() => {
@@ -113,13 +118,15 @@ export default function PartyStatement() {
   const totalMarketSales = enrichedShops.reduce((sum, s) => sum + (s.totalSales || 0), 0);
   const totalMarketPaid = enrichedShops.reduce((sum, s) => sum + (s.totalPaid || 0), 0);
 
-  // If a shop is selected, render the detailed Vyapar statement
-  if (selectedShop) {
+  // If viewing detailed statement (Default Mode)
+  if (!viewDirectory && activeShop) {
     return (
-      <PartyStatementDetail
-        shop={selectedShop}
-        onBack={() => setSelectedShop(null)}
-      />
+      <div className="space-y-4">
+        <PartyStatementDetail
+          shop={activeShop}
+          onBack={() => setViewDirectory(true)}
+        />
+      </div>
     );
   }
 
@@ -275,7 +282,10 @@ export default function PartyStatement() {
                 {filteredShops.map((shop) => (
                   <tr
                     key={shop.id}
-                    onClick={() => setSelectedShop(shop)}
+                    onClick={() => {
+                      setSelectedShopId(shop.id);
+                      setViewDirectory(false);
+                    }}
                     className="hover:bg-slate-50/80 transition-colors cursor-pointer"
                   >
                     <td className="p-3.5">
@@ -316,14 +326,8 @@ export default function PartyStatement() {
                       ₹{shop.totalPaid.toLocaleString('en-IN')}
                     </td>
 
-                    <td className="p-3.5 text-right">
-                      <span
-                        className={`font-black text-sm block ${
-                          shop.computedOutstanding > 0 ? 'text-red-700' : 'text-emerald-700'
-                        }`}
-                      >
-                        ₹{shop.computedOutstanding.toLocaleString('en-IN')}
-                      </span>
+                    <td className="p-3.5 text-right font-black text-slate-900 text-sm">
+                      ₹{shop.computedOutstanding.toLocaleString('en-IN')}
                     </td>
 
                     <td className="p-3.5 text-center">
@@ -343,7 +347,8 @@ export default function PartyStatement() {
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          setSelectedShop(shop);
+                          setSelectedShopId(shop.id);
+                          setViewDirectory(false);
                         }}
                         className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-xl text-xs font-black flex items-center gap-1 shadow-2xs mx-auto"
                       >
