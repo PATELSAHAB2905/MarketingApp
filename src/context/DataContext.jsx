@@ -408,6 +408,32 @@ export const DataProvider = ({ children }) => {
     addAuditLog('Admin', 'ADMIN', 'ASSIGN_MARKET', `Market ${marketId} assigned to ${marketer?.name || 'Unassigned'}`, {}, { marketerId });
   };
 
+  // addMarket: Create a new market and persist
+  const addMarket = (marketData) => {
+    const rawName = marketData.name?.trim() || '';
+    const slug = rawName.toLowerCase().replace(/[^a-z0-9]/g, '-');
+    const assignedMarketer = marketers.find(m => m.id === marketData.assignedMarketerId);
+    const newMarket = {
+      id: marketData.id || `mkt-${slug || Date.now()}`,
+      name: rawName,
+      district: marketData.district?.trim() || 'Shajapur',
+      distanceKm: Number(marketData.distanceKm || 50),
+      fuelRateKm: Number(marketData.fuelRateKm || 2),
+      maxFuelAllowed: Number(marketData.maxFuelAllowed || (Number(marketData.distanceKm || 50) * Number(marketData.fuelRateKm || 2))),
+      assignedMarketerId: marketData.assignedMarketerId || null,
+      assignedMarketerName: assignedMarketer ? assignedMarketer.name : marketData.assignedMarketerName || null,
+      totalShops: 0,
+      group: marketData.group || '',
+      createdDate: getFormattedDate(),
+      createdTime: getFormattedTime(),
+      ...marketData,
+    };
+    setMarkets(prev => [...prev, newMarket]);
+    persistToFirestore('markets', newMarket.id, newMarket);
+    addAuditLog('Admin', 'ADMIN', 'ADD_MARKET', `Market ${newMarket.name} created`, null, newMarket);
+    return newMarket;
+  };
+
   // getAuthorizedShops: returns shops the marketer can access.
   // Rule: All shops belonging to any Market assigned to this marketer are automatically available!
   const getAuthorizedShops = (marketerId, dateStr = getFormattedDate()) => {
@@ -1933,7 +1959,7 @@ export const DataProvider = ({ children }) => {
         getActiveTarget,
         products, setProducts,
         masterMarketGroups, setMasterMarketGroups,
-        markets, setMarkets, assignMarketToMarketer,
+        markets, setMarkets, addMarket, assignMarketToMarketer,
         marketRoutes, setMarketRoutes, addMarketRoute, updateMarketRoute, deleteMarketRoute,
         connectedMarkets, setConnectedMarkets, addConnectedMarket, updateConnectedMarket, deleteConnectedMarket,
         marketers, setMarketers,

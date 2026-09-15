@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 
 export default function MarketsMaster() {
-  const { markets, setMarkets, marketers, shops, assignMarketToMarketer } = useData();
+  const { markets, setMarkets, addMarket, marketers, shops, assignMarketToMarketer } = useData();
   const [showModal, setShowModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -29,7 +29,14 @@ export default function MarketsMaster() {
   const handleAddMarket = (e) => {
     e.preventDefault();
     const assignedMarketer = marketers.find((m) => m.id === selectedMarketerId);
-    const newMkt = {
+    const newMkt = addMarket ? addMarket({
+      name: name.trim(),
+      district: district.trim(),
+      distanceKm: Number(distanceKm),
+      fuelRateKm: Number(fuelRateKm),
+      assignedMarketerId: selectedMarketerId || null,
+      assignedMarketerName: assignedMarketer ? assignedMarketer.name : null,
+    }) : {
       id: `mkt-${name.toLowerCase().trim().replace(/[^a-z0-9]/g, '-')}`,
       name: name.trim(),
       district: district.trim(),
@@ -40,7 +47,9 @@ export default function MarketsMaster() {
       assignedMarketerName: assignedMarketer ? assignedMarketer.name : null,
       totalShops: 0,
     };
-    setMarkets([...markets, newMkt]);
+    if (!addMarket) {
+      setMarkets([...markets, newMkt]);
+    }
     setShowModal(false);
     setName('');
     setSelectedMarketerId('');

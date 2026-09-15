@@ -32,6 +32,7 @@ import {
   HelpCircle,
   TrendingUp,
   Tag,
+  Plus,
 } from 'lucide-react';
 
 // ============================================================================
@@ -120,6 +121,8 @@ export default function OldDataImport({ onNavigate }) {
   const { currentUser } = useAuth();
   const {
     markets,
+    addMarket,
+    marketers = [],
     shops,
     orders,
     collections,
@@ -142,6 +145,41 @@ export default function OldDataImport({ onNavigate }) {
   const [fileName, setFileName] = useState('');
   const [isParsing, setIsParsing] = useState(false);
   const [parsingError, setParsingError] = useState('');
+
+  // Quick Add Market State
+  const [showAddMarketModal, setShowAddMarketModal] = useState(false);
+  const [newMarketName, setNewMarketName] = useState('');
+  const [newMarketDistrict, setNewMarketDistrict] = useState('Shajapur');
+  const [newMarketMarketerId, setNewMarketMarketerId] = useState('');
+  const [newMarketDistanceKm, setNewMarketDistanceKm] = useState(50);
+  const [newMarketFuelRate, setNewMarketFuelRate] = useState(2);
+  const [marketActionMsg, setMarketActionMsg] = useState('');
+  const [newMarketError, setNewMarketError] = useState('');
+
+  const handleCreateMarket = (e) => {
+    if (e) e.preventDefault();
+    if (!newMarketName.trim()) {
+      setNewMarketError('Please enter a market name.');
+      return;
+    }
+    const created = addMarket({
+      name: newMarketName.trim(),
+      district: newMarketDistrict.trim() || 'Shajapur',
+      assignedMarketerId: newMarketMarketerId || null,
+      distanceKm: Number(newMarketDistanceKm) || 50,
+      fuelRateKm: Number(newMarketFuelRate) || 2,
+    });
+    if (created && created.id) {
+      setSelectedMarketId(created.id);
+      setMarketActionMsg(`Market "${created.name}" created and selected!`);
+      setTimeout(() => setMarketActionMsg(''), 4000);
+    }
+    setNewMarketName('');
+    setNewMarketDistrict('Shajapur');
+    setNewMarketMarketerId('');
+    setNewMarketError('');
+    setShowAddMarketModal(false);
+  };
 
   // Parsed Multi-Sheet Structures
   const [rawSheets, setRawSheets] = useState({}); // { sheetName: rawRows[][] }
@@ -1524,26 +1562,197 @@ export default function OldDataImport({ onNavigate }) {
                 <div className="space-y-6">
                   {/* Step 1.1: Mandatory Market Selection */}
                   <div className="space-y-2">
-                    <label className="block text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                      <MapPin className="w-4 h-4 text-red-700" />
-                      <span>STEP 1 – SELECT MANDATORY TARGET MARKET *</span>
-                    </label>
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                        <MapPin className="w-4 h-4 text-red-700" />
+                        <span>STEP 1 – SELECT MANDATORY TARGET MARKET *</span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => setShowAddMarketModal(true)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-xl text-xs font-black transition-all active:scale-95 shadow-xs"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>+ Add New Market</span>
+                      </button>
+                    </div>
                     <p className="text-xs text-slate-500 font-medium">
                       Every imported party and bill will link to this market. Marketers assigned to this market will automatically see their parties.
                     </p>
+
+                    {marketActionMsg && (
+                      <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-bold text-emerald-800 flex items-center gap-2 animate-in fade-in">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                        <span>{marketActionMsg}</span>
+                      </div>
+                    )}
+
                     <select
                       value={selectedMarketId}
-                      onChange={(e) => setSelectedMarketId(e.target.value)}
-                      className="w-full p-3.5 bg-slate-50 border-2 border-slate-300 focus:border-red-600 rounded-2xl text-sm font-bold text-slate-900"
+                      onChange={(e) => {
+                        if (e.target.value === '__ADD_NEW_MARKET__') {
+                          setShowAddMarketModal(true);
+                        } else {
+                          setSelectedMarketId(e.target.value);
+                        }
+                      }}
+                      className="w-full p-3.5 bg-slate-50 border-2 border-slate-300 focus:border-red-600 rounded-2xl text-sm font-bold text-slate-900 cursor-pointer"
                     >
                       <option value="">-- Choose Market (e.g. Akodiya, Pachore, Ashta, etc.) --</option>
                       {markets.map((m) => (
                         <option key={m.id} value={m.id}>
-                          {m.name} {m.group ? `(${m.group})` : ''}
+                          {m.name} {m.group ? `(${m.group})` : ''} {m.assignedMarketerName ? `[${m.assignedMarketerName}]` : ''}
                         </option>
                       ))}
+                      <option value="__ADD_NEW_MARKET__" className="text-red-700 font-black">
+                        ➕ + Add New Market...
+                      </option>
                     </select>
                   </div>
+
+                  {/* Quick Add Market Modal */}
+                  {showAddMarketModal && (
+                    <div className="fixed inset-0 z-[100] bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4">
+                      <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-lg w-full overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+                        {/* Header */}
+                        <div className="p-5 bg-gradient-to-r from-red-800 to-red-950 text-white flex justify-between items-center">
+                          <div className="flex items-center gap-2">
+                            <div className="p-2 bg-red-700/60 rounded-xl">
+                              <MapPin className="w-5 h-5 text-amber-300" />
+                            </div>
+                            <div>
+                              <h3 className="text-base font-black uppercase tracking-tight">Add New Market</h3>
+                              <p className="text-xs text-red-200 font-medium">Create a market and auto-select it for import</p>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setShowAddMarketModal(false);
+                              setNewMarketError('');
+                            }}
+                            className="p-2 text-red-200 hover:text-white rounded-xl hover:bg-white/10 transition-colors"
+                          >
+                            <X className="w-5 h-5" />
+                          </button>
+                        </div>
+
+                        {/* Form */}
+                        <form onSubmit={handleCreateMarket} className="p-6 space-y-4">
+                          {newMarketError && (
+                            <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs font-bold text-red-700 flex items-center gap-2">
+                              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                              <span>{newMarketError}</span>
+                            </div>
+                          )}
+
+                          {/* Market Name */}
+                          <div>
+                            <label className="block text-xs font-black text-slate-700 uppercase tracking-wider mb-1.5">
+                              Market Name *
+                            </label>
+                            <input
+                              type="text"
+                              required
+                              autoFocus
+                              placeholder="e.g. Biaora, Sujalpur, Ashta, etc."
+                              value={newMarketName}
+                              onChange={(e) => {
+                                setNewMarketName(e.target.value);
+                                if (newMarketError) setNewMarketError('');
+                              }}
+                              className="w-full p-3 bg-slate-50 border-2 border-slate-300 focus:border-red-600 focus:bg-white rounded-xl text-sm font-bold text-slate-900 outline-none transition-all"
+                            />
+                          </div>
+
+                          {/* District & Marketer Assignment */}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-xs font-black text-slate-700 uppercase tracking-wider mb-1.5">
+                                District
+                              </label>
+                              <input
+                                type="text"
+                                placeholder="e.g. Shajapur, Rajgarh"
+                                value={newMarketDistrict}
+                                onChange={(e) => setNewMarketDistrict(e.target.value)}
+                                className="w-full p-3 bg-slate-50 border-2 border-slate-300 focus:border-red-600 focus:bg-white rounded-xl text-sm font-bold text-slate-900 outline-none transition-all"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-xs font-black text-slate-700 uppercase tracking-wider mb-1.5">
+                                Assign Marketer (Optional)
+                              </label>
+                              <select
+                                value={newMarketMarketerId}
+                                onChange={(e) => setNewMarketMarketerId(e.target.value)}
+                                className="w-full p-3 bg-slate-50 border-2 border-slate-300 focus:border-red-600 focus:bg-white rounded-xl text-sm font-bold text-slate-900 outline-none transition-all"
+                              >
+                                <option value="">-- None / Assign Later --</option>
+                                {marketers.map((m) => (
+                                  <option key={m.id} value={m.id}>
+                                    {m.name} ({m.mobile || 'No Mobile'})
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          </div>
+
+                          {/* Distance KM & Fuel Rate */}
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-[11px] font-black text-slate-700 uppercase tracking-wider mb-1.5">
+                                Est. Distance (KM)
+                              </label>
+                              <input
+                                type="number"
+                                min="0"
+                                value={newMarketDistanceKm}
+                                onChange={(e) => setNewMarketDistanceKm(e.target.value)}
+                                className="w-full p-3 bg-slate-50 border-2 border-slate-300 focus:border-red-600 focus:bg-white rounded-xl text-sm font-bold text-slate-900 outline-none transition-all"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="block text-[11px] font-black text-slate-700 uppercase tracking-wider mb-1.5">
+                                Fuel Rate (₹/KM)
+                              </label>
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.5"
+                                value={newMarketFuelRate}
+                                onChange={(e) => setNewMarketFuelRate(e.target.value)}
+                                className="w-full p-3 bg-slate-50 border-2 border-slate-300 focus:border-red-600 focus:bg-white rounded-xl text-sm font-bold text-slate-900 outline-none transition-all"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Footer Actions */}
+                          <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setShowAddMarketModal(false);
+                                setNewMarketError('');
+                              }}
+                              className="px-4 py-2.5 rounded-xl border border-slate-300 text-slate-700 hover:bg-slate-100 text-xs font-bold transition-all"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="submit"
+                              className="px-5 py-2.5 bg-gradient-to-r from-red-700 to-red-900 hover:from-red-800 hover:to-red-950 text-white rounded-xl text-xs font-black shadow-md flex items-center gap-1.5 active:scale-95 transition-all"
+                            >
+                              <Plus className="w-4 h-4" />
+                              <span>Save & Select Market</span>
+                            </button>
+                          </div>
+                        </form>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Step 1.2: File Upload Zone */}
                   <div className="space-y-2">
