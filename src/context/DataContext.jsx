@@ -1841,6 +1841,114 @@ export const DataProvider = ({ children }) => {
     return newShop;
   };
 
+  const updateShop = (shopId, updatedData) => {
+    let savedShop = null;
+    let oldShopName = '';
+
+    setShops((prev) => {
+      const updated = prev.map((s) => {
+        if (s.id === shopId) {
+          oldShopName = s.name;
+          savedShop = {
+            ...s,
+            ...updatedData,
+            id: shopId,
+            updatedDate: getFormattedDate(),
+            updatedTime: getFormattedTime(),
+          };
+          return savedShop;
+        }
+        return s;
+      });
+      localStorage.setItem('PATEL_SHOPS', JSON.stringify(updated));
+      return updated;
+    });
+
+    if (savedShop) {
+      persistToFirestore('shops', shopId, savedShop);
+
+      // If party name changed, cascade update orders, collections, returns
+      if (updatedData.name && oldShopName && updatedData.name !== oldShopName) {
+        const newName = updatedData.name;
+        const oldNorm = oldShopName.toLowerCase().trim();
+
+        setOrders((prev) => {
+          const updated = prev.map((o) => {
+            if (o.shopId === shopId || (o.shopName && o.shopName.toLowerCase().trim() === oldNorm)) {
+              return { ...o, shopName: newName, shopId };
+            }
+            return o;
+          });
+          localStorage.setItem('PATEL_ORDERS', JSON.stringify(updated));
+          return updated;
+        });
+
+        setCollections((prev) => {
+          const updated = prev.map((c) => {
+            if (c.shopId === shopId || (c.shopName && c.shopName.toLowerCase().trim() === oldNorm)) {
+              return { ...c, shopName: newName, shopId };
+            }
+            return c;
+          });
+          localStorage.setItem('PATEL_COLLECTIONS', JSON.stringify(updated));
+          return updated;
+        });
+
+        setReturns((prev) => {
+          const updated = prev.map((r) => {
+            if (r.shopId === shopId || (r.shopName && r.shopName.toLowerCase().trim() === oldNorm)) {
+              return { ...r, shopName: newName, shopId };
+            }
+            return r;
+          });
+          localStorage.setItem('PATEL_RETURNS', JSON.stringify(updated));
+          return updated;
+        });
+      }
+
+      addAuditLog('Admin', 'ADMIN', 'UPDATE_SHOP', `Updated shop ${savedShop.name}`, null, savedShop);
+    }
+    return savedShop;
+  };
+
+  const deleteShop = (shopId, deleteTransactions = true) => {
+    const targetShop = shops.find((s) => s.id === shopId);
+    if (!targetShop) return false;
+
+    const sNorm = (targetShop.name || '').toLowerCase().trim();
+
+    setShops((prev) => {
+      const remaining = prev.filter((s) => s.id !== shopId);
+      localStorage.setItem('PATEL_SHOPS', JSON.stringify(remaining));
+      return remaining;
+    });
+
+    deleteDocument('shops', shopId).catch((err) => console.warn('Firestore delete shop error:', err));
+
+    if (deleteTransactions) {
+      setOrders((prev) => {
+        const remaining = prev.filter((o) => o.shopId !== shopId && (!o.shopName || o.shopName.toLowerCase().trim() !== sNorm));
+        localStorage.setItem('PATEL_ORDERS', JSON.stringify(remaining));
+        return remaining;
+      });
+
+      setCollections((prev) => {
+        const remaining = prev.filter((c) => c.shopId !== shopId && (!c.shopName || c.shopName.toLowerCase().trim() !== sNorm));
+        localStorage.setItem('PATEL_COLLECTIONS', JSON.stringify(remaining));
+        return remaining;
+      });
+
+      setReturns((prev) => {
+        const remaining = prev.filter((r) => r.shopId !== shopId && (!r.shopName || r.shopName.toLowerCase().trim() !== sNorm));
+        localStorage.setItem('PATEL_RETURNS', JSON.stringify(remaining));
+        return remaining;
+      });
+    }
+
+    addAuditLog('Admin', 'ADMIN', 'DELETE_SHOP', `Deleted shop ${targetShop.name}`, targetShop, null);
+    return true;
+  };
+
   const addMarketFeedback = (feedbackData) => {
     // Strict Workday Validation: Block Marketers from submitting feedback without Start My Day
     if (feedbackData.marketerId && feedbackData.role !== 'ADMIN' && !isMarketerDayActive(feedbackData.marketerId)) {
@@ -2006,7 +2114,7 @@ export const DataProvider = ({ children }) => {
         marketers, setMarketers,
         weeklyRoutes, setWeeklyRoutes,
         tempAssignments, setTempAssignments, addTempAssignment, removeTempAssignment,
-        shops, setShops, addNewShop,
+        shops, setShops, addNewShop, updateShop, deleteShop,
         leads, setLeads,
         targets, setTargets, addTarget, updateTarget, deleteTarget,
         importBatches, setImportBatches, importHistoricalData, importHistoricalBusinessData, importOldPartyData,

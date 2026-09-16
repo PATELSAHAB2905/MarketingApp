@@ -31,6 +31,8 @@ import {
   AlertCircle,
   Search,
   UserCheck,
+  Edit,
+  Trash2,
 } from 'lucide-react';
 
 export default function PartyStatementDetail({
@@ -41,13 +43,29 @@ export default function PartyStatementDetail({
   onOpenReturn,
 }) {
   const { currentUser } = useAuth();
-  const { shops, orders, collections, returns, marketers, markets, marketRoutes } = useData();
+  const { shops, orders, collections, returns, marketers, markets, marketRoutes, connectedMarkets, updateShop, deleteShop } = useData();
 
   // Current active shop (allows switching party directly in view)
   const [currentShopId, setCurrentShopId] = useState(initialShop.id);
   const shop = useMemo(() => {
     return shops.find((s) => s.id === currentShopId) || initialShop;
   }, [shops, currentShopId, initialShop]);
+
+  // Edit Party state
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [editOwner, setEditOwner] = useState('');
+  const [editMobile, setEditMobile] = useState('');
+  const [editAddress, setEditAddress] = useState('');
+  const [editMarketId, setEditMarketId] = useState('');
+  const [editRouteId, setEditRouteId] = useState('');
+  const [editConnectedMarketId, setEditConnectedMarketId] = useState('');
+  const [editStatus, setEditStatus] = useState('Customer');
+  const [editOutstanding, setEditOutstanding] = useState('');
+
+  // Delete Party state
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [deleteTransactions, setDeleteTransactions] = useState(true);
 
   // View Mode: 'vyapar' | 'accounting'
   const [viewMode, setViewMode] = useState('vyapar');
@@ -289,6 +307,48 @@ export default function PartyStatementDetail({
     }
   };
 
+  // Edit / Delete Party Handlers
+  const handleOpenEdit = () => {
+    setEditName(shop.name || '');
+    setEditOwner(shop.owner || '');
+    setEditMobile(shop.mobile || '');
+    setEditAddress(shop.address || '');
+    setEditMarketId(shop.marketId || markets[0]?.id || 'mkt-pachore');
+    setEditRouteId(shop.routeId || '');
+    setEditConnectedMarketId(shop.connectedMarketId || '');
+    setEditStatus(shop.status || 'Customer');
+    setEditOutstanding(shop.outstanding !== undefined ? String(shop.outstanding) : '0');
+    setIsEditModalOpen(true);
+  };
+
+  const handleSaveEdit = (e) => {
+    e.preventDefault();
+    const cm = connectedMarkets.find((c) => c.id === editConnectedMarketId);
+    updateShop(shop.id, {
+      name: editName.trim(),
+      owner: editOwner.trim(),
+      mobile: editMobile.trim(),
+      address: editAddress.trim(),
+      marketId: editMarketId,
+      routeId: editRouteId || undefined,
+      connectedMarketId: editConnectedMarketId || undefined,
+      connectedMarketName: cm?.name || undefined,
+      status: editStatus,
+      outstanding: editOutstanding ? Number(editOutstanding) : 0,
+    });
+    setIsEditModalOpen(false);
+  };
+
+  const handleDeleteParty = () => {
+    deleteShop(shop.id, deleteTransactions);
+    setIsDeleteModalOpen(false);
+    if (onBack) onBack();
+  };
+
+  const editCms = editRouteId
+    ? connectedMarkets.filter((c) => c.routeId === editRouteId && c.active)
+    : connectedMarkets.filter((c) => c.active);
+
   // WhatsApp Share Handler
   const handleShare = () => {
     const summaryText = `*PATEL SAHAB SPICES - PARTY STATEMENT*
@@ -354,6 +414,24 @@ Thank you for your business!`;
                 <span>+ Add Payment-In</span>
               </button>
             )}
+
+            <button
+              onClick={handleOpenEdit}
+              className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-xl text-xs font-bold flex items-center gap-1"
+              title="Edit / Rename Party"
+            >
+              <Edit className="w-3.5 h-3.5 text-blue-600" />
+              <span>Edit Party ✏️</span>
+            </button>
+
+            <button
+              onClick={() => setIsDeleteModalOpen(true)}
+              className="px-3 py-1.5 bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 rounded-xl text-xs font-bold flex items-center gap-1"
+              title="Delete Party"
+            >
+              <Trash2 className="w-3.5 h-3.5 text-red-600" />
+              <span>Delete Party 🗑️</span>
+            </button>
 
             <button
               onClick={handleShare}
@@ -938,6 +1016,226 @@ Thank you for your business!`;
             >
               Close Voucher
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* ───────────────────────────────────────────────────────────── */}
+      {/* 5. EDIT PARTY MODAL                                          */}
+      {/* ───────────────────────────────────────────────────────────── */}
+      {isEditModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm print:hidden">
+          <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+              <div>
+                <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
+                  <Edit className="w-5 h-5 text-blue-600" />
+                  EDIT PARTY / SHOP
+                </h2>
+                <p className="text-xs text-slate-400 mt-0.5">Rename party name, update contact number or market route.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsEditModalOpen(false)}
+                className="p-2 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-700"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="overflow-y-auto flex-1 p-6">
+              <form id="party-edit-form" onSubmit={handleSaveEdit} className="space-y-3 text-xs">
+                <div>
+                  <label className="block font-bold text-slate-600 mb-1">Party / Shop Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    className="w-full border border-slate-200 rounded-xl p-2.5 font-bold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="e.g., Aakash Rathore Kirana Jhadla"
+                  />
+                  <p className="text-[10px] text-slate-400 mt-1">Renaming this party will automatically synchronize all associated sales, receipts, and returns.</p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block font-bold text-slate-600 mb-1">Owner Name *</label>
+                    <input
+                      type="text"
+                      required
+                      value={editOwner}
+                      onChange={(e) => setEditOwner(e.target.value)}
+                      className="w-full border border-slate-200 rounded-xl p-2 font-bold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-600 mb-1">Mobile / Phone *</label>
+                    <input
+                      type="tel"
+                      required
+                      value={editMobile}
+                      onChange={(e) => setEditMobile(e.target.value)}
+                      className="w-full border border-slate-200 rounded-xl p-2 font-bold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-600 mb-1">Address</label>
+                  <input
+                    type="text"
+                    value={editAddress}
+                    onChange={(e) => setEditAddress(e.target.value)}
+                    className="w-full border border-slate-200 rounded-xl p-2 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="e.g., Main Road, Akodiya"
+                  />
+                </div>
+
+                {/* Market Hierarchy */}
+                <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 space-y-3">
+                  <p className="text-[10px] font-black text-amber-800 uppercase">Market & Route Linkage</p>
+
+                  <div>
+                    <label className="block font-bold text-slate-600 mb-1">Market Route</label>
+                    <select
+                      value={editRouteId}
+                      onChange={(e) => { setEditRouteId(e.target.value); setEditConnectedMarketId(''); }}
+                      className="w-full border border-amber-200 bg-white rounded-xl p-2.5 font-bold focus:outline-none focus:ring-2 focus:ring-amber-500"
+                    >
+                      <option value="">— Select Route (Optional) —</option>
+                      {marketRoutes.filter((r) => r.active).map((r) => (
+                        <option key={r.id} value={r.id}>{r.name} Route</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-600 mb-1">Connected Market</label>
+                    <select
+                      value={editConnectedMarketId}
+                      onChange={(e) => setEditConnectedMarketId(e.target.value)}
+                      className="w-full border border-amber-200 bg-white rounded-xl p-2.5 font-bold focus:outline-none focus:ring-2 focus:ring-amber-500"
+                      disabled={!editRouteId && editCms.length === 0}
+                    >
+                      <option value="">— Select Connected Market (Optional) —</option>
+                      {editCms.map((c) => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Legacy Market */}
+                <div>
+                  <label className="block font-bold text-slate-600 mb-1">Market Master Group *</label>
+                  <select
+                    value={editMarketId}
+                    onChange={(e) => setEditMarketId(e.target.value)}
+                    className="w-full border border-slate-200 rounded-xl p-2.5 font-bold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    {markets.map((m) => (
+                      <option key={m.id} value={m.id}>{m.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block font-bold text-slate-600 mb-1">Status</label>
+                    <select
+                      value={editStatus}
+                      onChange={(e) => setEditStatus(e.target.value)}
+                      className="w-full border border-slate-200 rounded-xl p-2.5 font-bold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="Customer">Customer</option>
+                      <option value="Lead">Lead</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-600 mb-1">Outstanding Balance (₹)</label>
+                    <input
+                      type="number"
+                      value={editOutstanding}
+                      onChange={(e) => setEditOutstanding(e.target.value)}
+                      className="w-full border border-slate-200 rounded-xl p-2.5 font-bold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      placeholder="0"
+                    />
+                  </div>
+                </div>
+              </form>
+            </div>
+
+            <div className="p-6 border-t border-slate-100 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setIsEditModalOpen(false)}
+                className="flex-1 py-3 bg-slate-100 text-slate-700 font-bold rounded-xl hover:bg-slate-200"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                form="party-edit-form"
+                className="flex-1 py-3 bg-blue-700 text-white font-bold rounded-xl hover:bg-blue-800"
+              >
+                Save Changes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ───────────────────────────────────────────────────────────── */}
+      {/* 6. DELETE PARTY CONFIRMATION MODAL                            */}
+      {/* ───────────────────────────────────────────────────────────── */}
+      {isDeleteModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm print:hidden">
+          <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden p-6 space-y-4">
+            <div className="w-12 h-12 bg-red-100 text-red-700 rounded-2xl flex items-center justify-center mx-auto">
+              <Trash2 className="w-6 h-6" />
+            </div>
+
+            <div className="text-center space-y-1">
+              <h3 className="text-lg font-black text-slate-900">Delete Party / Shop?</h3>
+              <p className="text-xs text-slate-500 font-medium">
+                Are you sure you want to delete <strong className="text-slate-800">{shop.name}</strong>?
+              </p>
+            </div>
+
+            <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200 text-xs space-y-2">
+              <label className="flex items-start gap-2 cursor-pointer font-bold text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={deleteTransactions}
+                  onChange={(e) => setDeleteTransactions(e.target.checked)}
+                  className="mt-0.5 rounded text-red-600 focus:ring-red-500"
+                />
+                <span>Also delete all linked transactions (orders, collections, returns) for this party</span>
+              </label>
+              <p className="text-[10px] text-slate-400 pl-5">
+                {deleteTransactions
+                  ? 'All historical and current bills, receipts, and returns of this party will be permanently deleted.'
+                  : 'Ledger records will remain in database but party master profile will be removed.'}
+              </p>
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsDeleteModalOpen(false)}
+                className="flex-1 py-2.5 bg-slate-100 text-slate-700 font-bold rounded-xl hover:bg-slate-200 text-xs"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteParty}
+                className="flex-1 py-2.5 bg-red-700 text-white font-bold rounded-xl hover:bg-red-800 text-xs"
+              >
+                Delete Party
+              </button>
+            </div>
           </div>
         </div>
       )}
