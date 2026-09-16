@@ -469,7 +469,9 @@ export default function OldDataImport({ onNavigate }) {
     // Scan up to first 25 rows for header row
     let headerIdx = 0;
     for (let i = 0; i < Math.min(25, sheetRows.length); i++) {
-      const row = (sheetRows[i] || []).map((c) => String(c).toLowerCase().trim());
+      const row = (sheetRows[i] || []).map((c) =>
+        String(c).toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim()
+      );
       if (
         row.some(
           (c) =>
@@ -491,24 +493,32 @@ export default function OldDataImport({ onNavigate }) {
 
     const rawHeadersRow = sheetRows[headerIdx] || [];
     setStatementHeaders(rawHeadersRow);
-    const headers = rawHeadersRow.map((c) => String(c).toLowerCase().trim());
+    const headers = rawHeadersRow.map((c) =>
+      String(c).toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim()
+    );
 
     const findCol = (aliases) => {
-      return headers.findIndex((h) => aliases.some((a) => h === a || h.includes(a)));
+      return headers.findIndex((h) => {
+        if (!h) return false;
+        return aliases.some((a) => {
+          const cleanA = a.toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim();
+          return h === cleanA || h.includes(cleanA) || cleanA.includes(h);
+        });
+      });
     };
 
     setStatementColMap({
       date: findCol(['date', 'txn date', 'invoice date', 'bill date', 'entry date', 'dt']),
-      txnType: findCol(['txn type', 'transaction type', 'type', 'vch type', 'particulars', 'particular', 'voucher type']),
-      invoiceNo: findCol(['ref no.', 'ref no', 'invoice no', 'bill no', 'vch no', 'ref', 'invoice', 'bill', 'document', 'voucher no']),
+      txnType: findCol(['txn type', 'transaction type', 'type', 'vch type', 'particulars', 'particular', 'voucher type', 'entry type']),
+      invoiceNo: findCol(['invoice ref no', 'invoice ref', 'ref no', 'invoice no', 'bill no', 'vch no', 'ref', 'invoice', 'bill', 'voucher no', 'doc no']),
       partyName: findCol(['party name', 'party', 'customer name', 'shop name', 'account name', 'customer', 'account']),
-      phone: findCol(['phone', 'mobile', 'contact']),
+      phone: findCol(['party contact', 'phone', 'mobile', 'contact', 'tel']),
       email: findCol(['email', 'mail']),
-      totalAmount: findCol(['total', 'total amount', 'debit', 'sale amount', 'invoice amount', 'amount', 'net total']),
-      received: findCol(['received / paid', 'received/paid', 'received', 'paid', 'credit', 'payment', 'collection', 'payment-in', 'amount received']),
-      receivableBalance: findCol(['receivable balance', 'receivable', 'closing balance', 'balance', 'running balance']),
+      totalAmount: findCol(['total income', 'total amount', 'total', 'debit', 'sale amount', 'invoice amount', 'amount', 'net total', 'income']),
+      received: findCol(['received paid', 'received', 'paid', 'credit', 'payment', 'collection', 'payment in', 'amount received', 'money in']),
+      receivableBalance: findCol(['receivable balance', 'receivable', 'closing balance', 'balance', 'running balance', 'net balance']),
       payableBalance: findCol(['payable balance', 'payable']),
-      paymentType: findCol(['payment type', 'payment mode', 'mode', 'pay mode']),
+      paymentType: findCol(['payment type', 'payment mode', 'mode', 'pay mode', 'payment method']),
       paymentRef: findCol(['payment reference', 'ref no', 'cheque no', 'utr', 'transaction id', 'chq no']),
       description: findCol(['description', 'narration', 'remark', 'remarks', 'notes']),
     });
@@ -520,7 +530,9 @@ export default function OldDataImport({ onNavigate }) {
 
     let headerIdx = 0;
     for (let i = 0; i < Math.min(25, sheetRows.length); i++) {
-      const row = (sheetRows[i] || []).map((c) => String(c).toLowerCase().trim());
+      const row = (sheetRows[i] || []).map((c) =>
+        String(c).toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim()
+      );
       if (
         row.some(
           (c) =>
@@ -540,22 +552,32 @@ export default function OldDataImport({ onNavigate }) {
 
     const rawItemHeadersRow = sheetRows[headerIdx] || [];
     setItemHeaders(rawItemHeadersRow);
-    const headers = rawItemHeadersRow.map((c) => String(c).toLowerCase().trim());
-    const findCol = (aliases) => headers.findIndex((h) => aliases.some((a) => h === a || h.includes(a)));
+    const headers = rawItemHeadersRow.map((c) =>
+      String(c).toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim()
+    );
+    const findCol = (aliases) => {
+      return headers.findIndex((h) => {
+        if (!h) return false;
+        return aliases.some((a) => {
+          const cleanA = a.toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim();
+          return h === cleanA || h.includes(cleanA) || cleanA.includes(h);
+        });
+      });
+    };
 
     setItemColMap({
-      date: findCol(['date', 'invoice date', 'bill date']),
-      invoiceNo: findCol(['ref no.', 'ref no', 'invoice no', 'bill no', 'vch no', 'invoice', 'bill']),
+      date: findCol(['date', 'invoice date', 'bill date', 'entry date']),
+      invoiceNo: findCol(['invoice ref no', 'invoice ref', 'ref no', 'invoice no', 'bill no', 'vch no', 'invoice', 'bill', 'voucher no']),
       partyName: findCol(['party name', 'party', 'customer name', 'shop name']),
-      itemName: findCol(['item name', 'product name', 'item', 'product', 'goods description', 'description']),
+      itemName: findCol(['item name', 'product name', 'item', 'product', 'goods description', 'description', 'particulars']),
       itemCode: findCol(['item code', 'product code', 'code', 'sku', 'barcode']),
-      hsn: findCol(['hsn', 'hsn/sac', 'sac']),
-      category: findCol(['category', 'group']),
-      quantity: findCol(['quantity', 'qty', 'qty (kg)', 'total kg', 'weight']),
-      unit: findCol(['unit', 'uom', 'pack size']),
-      unitPrice: findCol(['unit price', 'rate', 'price', 'rate/kg', 'item rate']),
+      hsn: findCol(['hsn', 'hsn sac', 'sac', 'hsn code']),
+      category: findCol(['category', 'group', 'item group']),
+      quantity: findCol(['quantity', 'qty', 'qty kg', 'total kg', 'weight', 'count', 'units']),
+      unit: findCol(['unit', 'uom', 'pack size', 'measure']),
+      unitPrice: findCol(['unit price', 'rate', 'price', 'rate kg', 'item rate', 'selling price']),
       discount: findCol(['discount', 'disc']),
-      amount: findCol(['amount', 'total', 'item amount', 'net amount']),
+      amount: findCol(['amount', 'total', 'item amount', 'net amount', 'total amount', 'value']),
     });
   };
 
@@ -599,12 +621,16 @@ export default function OldDataImport({ onNavigate }) {
       );
 
       // --- A. Process Item Details Sheet (if present) ---
-      const itemsByInvoiceMap = new Map(); // invoiceNo -> Array of item objects
+      const itemsByInvoiceMap = new Map(); // cleanInvKey -> Array of item objects
+
+      const cleanInvKey = (inv) => String(inv || '').toLowerCase().replace(/[^a-z0-9]/g, '').trim();
 
       if (itemRows.length > 0) {
         let itemHeaderIdx = 0;
         for (let i = 0; i < Math.min(10, itemRows.length); i++) {
-          const row = (itemRows[i] || []).map((c) => String(c).toLowerCase().trim());
+          const row = (itemRows[i] || []).map((c) =>
+            String(c).toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim()
+          );
           if (row.some((c) => c.includes('item') || c.includes('product') || c.includes('qty') || c.includes('amount'))) {
             itemHeaderIdx = i;
             break;
@@ -647,7 +673,7 @@ export default function OldDataImport({ onNavigate }) {
           detectedItemsList.push(itemObj);
 
           if (rawInv) {
-            const cleanInv = rawInv.toLowerCase().trim();
+            const cleanInv = cleanInvKey(rawInv);
             if (!itemsByInvoiceMap.has(cleanInv)) {
               itemsByInvoiceMap.set(cleanInv, []);
             }
@@ -659,8 +685,21 @@ export default function OldDataImport({ onNavigate }) {
       // --- B. Process Party Statement Report Sheet ---
       let stmtHeaderIdx = 0;
       for (let i = 0; i < Math.min(25, stmtRows.length); i++) {
-        const row = (stmtRows[i] || []).map((c) => String(c).toLowerCase().trim());
-        if (row.some((c) => c.includes('party') || c.includes('date') || c.includes('txn type') || c.includes('amount') || c.includes('balance') || c.includes('total'))) {
+        const row = (stmtRows[i] || []).map((c) =>
+          String(c).toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim()
+        );
+        if (
+          row.some(
+            (c) =>
+              c.includes('party') ||
+              c.includes('date') ||
+              c.includes('txn type') ||
+              c.includes('amount') ||
+              c.includes('balance') ||
+              c.includes('total') ||
+              c.includes('received')
+          )
+        ) {
           stmtHeaderIdx = i;
           break;
         }
@@ -755,7 +794,7 @@ export default function OldDataImport({ onNavigate }) {
           const saleKey = `${normPName}_${billNo.trim()}_${rawDate}`;
           const isDuplicate = existingOrderKeys.has(saleKey);
 
-          const linkedItems = itemsByInvoiceMap.get(billNo.toLowerCase().trim()) || [];
+          const linkedItems = itemsByInvoiceMap.get(cleanInvKey(billNo)) || [];
           const totalKgFromItems = linkedItems.reduce((sum, it) => sum + (it.quantityKg || 0), 0);
           const computedSubtotal = rawTotal || (rawRec + rawRecBal) || linkedItems.reduce((sum, it) => sum + (it.amount || 0), 0);
 
@@ -794,36 +833,8 @@ export default function OldDataImport({ onNavigate }) {
             isDuplicate,
           };
           detectedOrdersList.push(orderRecord);
-
-          // If immediate payment received on this sale, record the collection payment as well
-          if (rawRec > 0) {
-            const colRefNo = `RCP-${billNo}`;
-            const colKey = `${normPName}_${rawDate}_${rawRec}_${colRefNo}`;
-            const isColDuplicate = existingCollectionKeys.has(colKey);
-            const saleCollection = {
-              id: `HIST-COL-SALE-${billNo}-${Date.now()}-${r}`,
-              receiptNumber: colRefNo,
-              refNo: colRefNo,
-              invoiceRef: billNo,
-              shopId: currentParty.id,
-              shopName: rawParty,
-              marketId: selectedMarketId,
-              marketName: selectedMarket?.name || 'Market',
-              date: rawDate || getFormattedDate(),
-              time: '10:05 AM',
-              amount: rawRec,
-              paymentMode: rawPayType || 'Cash',
-              description: `Payment against Invoice ${billNo}`,
-              remark: `Payment against Invoice ${billNo}`,
-              source: 'OLD_IMPORT',
-              dataSource: 'OLD IMPORT',
-              isHistorical: true,
-              isDuplicate: isColDuplicate,
-            };
-            detectedCollectionsList.push(saleCollection);
-          }
         } else if (txnType === 'COLLECTION') {
-          const refNo = rawPayRef || rawInv || `HIST-RCP-${r}`;
+          const refNo = rawInv || rawPayRef || `HIST-RCP-${r}`;
           const colAmount = rawRec > 0 ? rawRec : rawTotal;
           const colKey = `${normPName}_${rawDate}_${colAmount}`;
           const isDuplicate = existingCollectionKeys.has(colKey);
