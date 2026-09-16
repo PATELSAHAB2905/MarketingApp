@@ -799,6 +799,218 @@ export const DataProvider = ({ children }) => {
     return batchRecord;
   };
 
+  // ======= COMPLETE HISTORICAL BUSINESS DATA IMPORT (MULTI-SHEET / VYAPAR LEDGERS) =======
+  const importHistoricalBusinessData = ({
+    newShops = [],
+    historicalOrders = [],
+    historicalCollections = [],
+    historicalReturns = [],
+    batchMeta = {},
+  }) => {
+    const batchId = batchMeta.id || `batch-hist-${Date.now()}`;
+    const importDate = getFormattedDate();
+    const importTime = getFormattedTime();
+
+    // 1. Process & Format New / Updated Shops
+    const formattedNewShops = newShops.map((s, idx) => {
+      const rec = Number(s.openingReceivable ?? s.receivableBalance ?? s.openingOutstanding ?? s.outstanding ?? 0);
+      const pay = Number(s.openingPayable ?? s.payableBalance ?? 0);
+      return {
+        id: s.id || `shop-hist-${Date.now()}-${idx}-${Math.floor(Math.random() * 1000)}`,
+        name: s.name,
+        owner: s.owner || '',
+        mobile: s.mobile || s.phone || '',
+        email: s.email || '',
+        address: s.address || s.marketName || 'Main Market',
+        marketId: s.marketId || 'mkt-pachore',
+        marketName: s.marketName || 'Pachore',
+        routeId: s.routeId || undefined,
+        connectedMarketId: s.connectedMarketId || undefined,
+        connectedMarketName: s.connectedMarketName || s.marketName || undefined,
+        openingReceivable: rec,
+        openingPayable: pay,
+        openingOutstanding: rec,
+        outstanding: rec,
+        status: 'Customer',
+        source: 'OLD_IMPORT',
+        dataSource: 'OLD IMPORT',
+        isHistorical: true,
+        importBatchId: batchId,
+        importDate,
+        lastOrderKg: 0,
+        lastOrderDate: null,
+        highReturnWarning: false,
+        lat: s.lat || (23.5 + Math.random() * 0.1),
+        lng: s.lng || (76.5 + Math.random() * 0.1),
+        ...s,
+      };
+    });
+
+    // 2. Process & Format Historical Orders / Sales
+    const formattedOrders = historicalOrders.map((o, idx) => {
+      const totalVal = Number(o.grandTotal ?? o.subtotal ?? o.totalValue ?? o.amount ?? 0);
+      const totalKgVal = Number(o.totalKg ?? o.quantityKg ?? 0);
+      return {
+        id: o.id || `ord-hist-${Date.now()}-${idx}-${Math.floor(Math.random() * 1000)}`,
+        invoiceNo: o.invoiceNo || o.billNo || `HIST-BILL-${idx + 1}`,
+        billNo: o.billNo || o.invoiceNo || `HIST-BILL-${idx + 1}`,
+        date: o.date || o.billDate || importDate,
+        dateIso: o.dateIso || '',
+        shopId: o.shopId || '',
+        shopName: o.shopName || o.partyName || 'Customer',
+        marketId: o.marketId || '',
+        marketName: o.marketName || '',
+        totalKg: totalKgVal,
+        subtotal: totalVal,
+        grandTotal: totalVal,
+        totalValue: totalVal,
+        paidAmount: Number(o.paidAmount || 0),
+        items: Array.isArray(o.items) ? o.items : [],
+        source: 'OLD_IMPORT',
+        dataSource: 'OLD IMPORT',
+        isHistorical: true,
+        syncStatus: 'Historical',
+        importBatchId: batchId,
+        ...o,
+      };
+    });
+
+    // 3. Process & Format Historical Collections / Payments
+    const formattedCollections = historicalCollections.map((c, idx) => {
+      const amt = Number(c.amount ?? 0);
+      return {
+        id: c.id || `col-hist-${Date.now()}-${idx}-${Math.floor(Math.random() * 1000)}`,
+        receiptNumber: c.receiptNumber || c.refNo || `HIST-REC-${idx + 1}`,
+        refNo: c.refNo || c.receiptNumber || `HIST-REC-${idx + 1}`,
+        date: c.date || importDate,
+        dateIso: c.dateIso || '',
+        shopId: c.shopId || '',
+        shopName: c.shopName || c.partyName || 'Customer',
+        marketId: c.marketId || '',
+        marketName: c.marketName || '',
+        amount: amt,
+        paymentMode: c.paymentMode || 'Cash',
+        remark: c.remark || c.description || 'Historical Payment Collection',
+        source: 'OLD_IMPORT',
+        dataSource: 'OLD IMPORT',
+        isHistorical: true,
+        syncStatus: 'Historical',
+        importBatchId: batchId,
+        ...c,
+      };
+    });
+
+    // 4. Process & Format Historical Returns / Credit Notes
+    const formattedReturns = historicalReturns.map((r, idx) => {
+      const retVal = Number(r.returnValue ?? r.amount ?? 0);
+      return {
+        id: r.id || `ret-hist-${Date.now()}-${idx}-${Math.floor(Math.random() * 1000)}`,
+        invoiceNo: r.invoiceNo || r.invoiceRef || `HIST-RET-${idx + 1}`,
+        invoiceRef: r.invoiceRef || r.invoiceNo || `HIST-RET-${idx + 1}`,
+        date: r.date || importDate,
+        dateIso: r.dateIso || '',
+        shopId: r.shopId || '',
+        shopName: r.shopName || r.partyName || 'Customer',
+        marketId: r.marketId || '',
+        marketName: r.marketName || '',
+        productName: r.productName || 'Historical Goods Return',
+        quantityKg: Number(r.quantityKg || 0),
+        returnValue: retVal,
+        amount: retVal,
+        reason: r.reason || 'Historical Sales Return',
+        isCreditNote: true,
+        source: 'OLD_IMPORT',
+        dataSource: 'OLD IMPORT',
+        isHistorical: true,
+        syncStatus: 'Historical',
+        importBatchId: batchId,
+        ...r,
+      };
+    });
+
+    // 5. Create Batch Record
+    const batchRecord = {
+      id: batchId,
+      dataType: 'historical_business_data',
+      fileName: batchMeta.fileName || 'Historical_Data.xlsx',
+      sheetNames: batchMeta.sheetNames || [],
+      totalNewShops: formattedNewShops.length,
+      totalOrders: formattedOrders.length,
+      totalCollections: formattedCollections.length,
+      totalReturns: formattedReturns.length,
+      itemsCount: batchMeta.itemsCount || 0,
+      totalSalesVal: formattedOrders.reduce((sum, o) => sum + (o.grandTotal || 0), 0),
+      totalColVal: formattedCollections.reduce((sum, c) => sum + (c.amount || 0), 0),
+      totalRetVal: formattedReturns.reduce((sum, r) => sum + (r.returnValue || 0), 0),
+      importDate,
+      importTime,
+      importedBy: 'Admin',
+      status: 'Completed',
+      ...batchMeta,
+    };
+
+    // 6. Update State & LocalStorage
+    setShops((prev) => {
+      const existingIds = new Set(prev.map((s) => s.id));
+      const newToAdd = formattedNewShops.filter((s) => !existingIds.has(s.id));
+      const updatedExisting = prev.map((s) => {
+        const matchingNew = formattedNewShops.find((ns) => ns.id === s.id);
+        return matchingNew ? { ...s, ...matchingNew } : s;
+      });
+      const result = [...newToAdd, ...updatedExisting];
+      localStorage.setItem('PATEL_SHOPS', JSON.stringify(result));
+      return result;
+    });
+
+    setOrders((prev) => {
+      const existingIds = new Set(prev.map((o) => o.id));
+      const newOrders = formattedOrders.filter((o) => !existingIds.has(o.id));
+      const result = [...newOrders, ...prev];
+      localStorage.setItem('PATEL_ORDERS', JSON.stringify(result));
+      return result;
+    });
+
+    setCollections((prev) => {
+      const existingIds = new Set(prev.map((c) => c.id));
+      const newCols = formattedCollections.filter((c) => !existingIds.has(c.id));
+      const result = [...newCols, ...prev];
+      localStorage.setItem('PATEL_COLLECTIONS', JSON.stringify(result));
+      return result;
+    });
+
+    setReturns((prev) => {
+      const existingIds = new Set(prev.map((r) => r.id));
+      const newRets = formattedReturns.filter((r) => !existingIds.has(r.id));
+      const result = [...newRets, ...prev];
+      localStorage.setItem('PATEL_RETURNS', JSON.stringify(result));
+      return result;
+    });
+
+    setImportBatches((prev) => {
+      const result = [batchRecord, ...prev];
+      localStorage.setItem('PATEL_IMPORT_BATCHES', JSON.stringify(result));
+      return result;
+    });
+
+    // 7. Background Firestore Sync
+    batchUpsert('shops', formattedNewShops);
+    batchUpsert('orders', formattedOrders);
+    batchUpsert('collections', formattedCollections);
+    batchUpsert('returns', formattedReturns);
+    persistToFirestore('importBatches', batchRecord.id, batchRecord);
+
+    addAuditLog(
+      'Admin',
+      'ADMIN',
+      'HISTORICAL_DATA_IMPORT',
+      `Imported ${formattedOrders.length} sales, ${formattedCollections.length} payments, ${formattedReturns.length} returns for ${formattedNewShops.length} shops`,
+      null,
+      batchRecord
+    );
+
+    return batchRecord;
+  };
+
   const addCheckIn = (checkInData) => {
     const today = checkInData.date || getFormattedDate();
     const startT = checkInData.startTime || checkInData.createdTime || getFormattedTime();
@@ -1627,177 +1839,6 @@ export const DataProvider = ({ children }) => {
     persistToFirestore('shops', newShop.id, newShop);
     addAuditLog('User', 'USER', 'ADD_SHOP', `Shop ${newShop.name}`, null, newShop);
     return newShop;
-  };
-
-  // Historical Business Data Import (Admin Only)
-  const importHistoricalBusinessData = ({
-    newShops = [],
-    historicalOrders = [],
-    historicalCollections = [],
-    historicalReturns = [],
-    batchMeta = {},
-  }) => {
-    // 1. Add new shops
-    if (newShops.length > 0) {
-      const createdShops = newShops.map((s, idx) => ({
-        id: s.id || `shop-hist-${Date.now()}-${idx}`,
-        name: s.name,
-        owner: s.owner || '',
-        mobile: s.mobile || '',
-        address: s.address || '',
-        marketId: s.marketId || 'mkt-pachore',
-        marketName: s.marketName || 'Pachore',
-        routeId: s.routeId || '',
-        connectedMarketId: s.connectedMarketId || '',
-        status: s.status || 'Customer',
-        source: 'OLD IMPORT',
-        dataSource: 'OLD IMPORT',
-        outstanding: Number(s.outstanding || 0),
-        lastOrderKg: Number(s.lastOrderKg || 0),
-        lastOrderDate: s.lastOrderDate || null,
-        lastCollectionDate: s.lastCollectionDate || null,
-        createdDate: getFormattedDate(),
-        createdTime: getFormattedTime(),
-        updatedDate: getFormattedDate(),
-        updatedTime: getFormattedTime(),
-      }));
-      setShops(prev => [...prev, ...createdShops]);
-    }
-
-    // 2. Add historical orders (grouped under same invoice)
-    if (historicalOrders.length > 0) {
-      const formattedOrders = historicalOrders.map((ord, idx) => ({
-        id: ord.id || `HIST-ORD-${ord.invoiceNo || idx}-${Date.now()}`,
-        invoiceNo: ord.invoiceNo || ord.invoiceRef || '',
-        invoiceRef: ord.invoiceNo || ord.invoiceRef || '',
-        shopId: ord.shopId,
-        shopName: ord.shopName,
-        marketId: ord.marketId || '',
-        marketName: ord.marketName || '',
-        routeId: ord.routeId || '',
-        routeName: ord.routeName || '',
-        date: ord.date,
-        time: ord.time || '10:00 AM',
-        totalKg: Number(ord.totalKg || 0),
-        totalPouches: Number(ord.totalPouches || 0),
-        subtotal: Number(ord.subtotal || ord.grandTotal || 0),
-        gstRate: ord.gstRate || 0,
-        gstAmount: ord.gstAmount || 0,
-        grandTotal: Number(ord.grandTotal || ord.subtotal || 0),
-        items: ord.items || [],
-        remark: ord.remark || 'Historical Import',
-        source: 'OLD IMPORT',
-        dataSource: 'OLD IMPORT',
-        syncStatus: 'synced',
-        createdDate: getFormattedDate(),
-        createdTime: getFormattedTime(),
-      }));
-      setOrders(prev => [...prev, ...formattedOrders]);
-    }
-
-    // 3. Add historical collections (Payment-In)
-    if (historicalCollections.length > 0) {
-      const formattedCollections = historicalCollections.map((col, idx) => ({
-        id: col.id || `HIST-COL-${col.receiptNumber || idx}-${Date.now()}`,
-        receiptNumber: col.receiptNumber || col.refNo || `HIST-RCP-${idx + 1}`,
-        invoiceRef: col.invoiceRef || '',
-        shopId: col.shopId,
-        shopName: col.shopName,
-        marketId: col.marketId || '',
-        date: col.date,
-        time: col.time || '11:00 AM',
-        amount: Number(col.amount || 0),
-        paymentMode: col.paymentMode || 'Cash',
-        remark: col.remark || 'Historical Payment-In Import',
-        source: 'OLD IMPORT',
-        dataSource: 'OLD IMPORT',
-        syncStatus: 'synced',
-        createdDate: getFormattedDate(),
-        createdTime: getFormattedTime(),
-      }));
-      setCollections(prev => [...prev, ...formattedCollections]);
-    }
-
-    // 4. Add historical returns / credit notes
-    if (historicalReturns.length > 0) {
-      const formattedReturns = historicalReturns.map((ret, idx) => ({
-        id: ret.id || `HIST-RET-${ret.invoiceNo || idx}-${Date.now()}`,
-        invoiceNo: ret.invoiceNo || ret.invoiceRef || '',
-        shopId: ret.shopId,
-        shopName: ret.shopName,
-        marketId: ret.marketId || '',
-        date: ret.date,
-        time: ret.time || '12:00 PM',
-        productName: ret.productName || 'Credit Note Return',
-        quantityKg: Number(ret.quantityKg || 0),
-        returnValue: Number(ret.returnValue || ret.amount || 0),
-        reason: ret.reason || 'Historical Credit Note / Return',
-        isCreditNote: true,
-        source: 'OLD IMPORT',
-        dataSource: 'OLD IMPORT',
-        syncStatus: 'synced',
-        createdDate: getFormattedDate(),
-        createdTime: getFormattedTime(),
-      }));
-      setReturns(prev => [...prev, ...formattedReturns]);
-    }
-
-    // 5. Update Shop balances & latest order dates
-    setShops(prevShops => {
-      return prevShops.map(sh => {
-        const matchingOrders = historicalOrders.filter(o => o.shopId === sh.id || (o.shopName && o.shopName.toLowerCase().trim() === sh.name?.toLowerCase().trim()));
-        const matchingCols = historicalCollections.filter(c => c.shopId === sh.id || (c.shopName && c.shopName.toLowerCase().trim() === sh.name?.toLowerCase().trim()));
-        const matchingRets = historicalReturns.filter(r => r.shopId === sh.id || (r.shopName && r.shopName.toLowerCase().trim() === sh.name?.toLowerCase().trim()));
-
-        if (matchingOrders.length === 0 && matchingCols.length === 0 && matchingRets.length === 0) {
-          return sh;
-        }
-
-        const addedSales = matchingOrders.reduce((sum, o) => sum + Number(o.grandTotal || o.subtotal || 0), 0);
-        const addedCols = matchingCols.reduce((sum, c) => sum + Number(c.amount || 0), 0);
-        const addedRets = matchingRets.reduce((sum, r) => sum + Number(r.returnValue || r.amount || 0), 0);
-        const netChange = addedSales - addedCols - addedRets;
-
-        const sortedDates = matchingOrders.map(o => o.date).filter(Boolean);
-        const latestOrderDate = sortedDates[sortedDates.length - 1] || sh.lastOrderDate;
-
-        return {
-          ...sh,
-          outstanding: Math.max(0, (sh.outstanding || 0) + netChange),
-          lastOrderDate: latestOrderDate || sh.lastOrderDate,
-          updatedDate: getFormattedDate(),
-          updatedTime: getFormattedTime(),
-        };
-      });
-    });
-
-    // 6. Record batch history
-    const batchRecord = {
-      id: `batch-${Date.now()}`,
-      importedAt: `${getFormattedDate()} ${getFormattedTime()}`,
-      fileName: batchMeta.fileName || 'Historical_Data.xlsx',
-      sheetNames: batchMeta.sheetNames || [],
-      importedBy: 'Admin',
-      counts: {
-        newShops: newShops.length,
-        orders: historicalOrders.length,
-        collections: historicalCollections.length,
-        returns: historicalReturns.length,
-        itemsCount: batchMeta.itemsCount || 0,
-      },
-      source: 'OLD IMPORT',
-    };
-    setImportBatches(prev => [batchRecord, ...prev]);
-    persistToFirestore('importBatches', batchRecord.id, batchRecord);
-
-    if (newShops.length > 0) batchUpsert('shops', newShops);
-    if (historicalOrders.length > 0) batchUpsert('orders', historicalOrders);
-    if (historicalCollections.length > 0) batchUpsert('collections', historicalCollections);
-    if (historicalReturns.length > 0) batchUpsert('returns', historicalReturns);
-
-    addAuditLog('Admin', 'ADMIN', 'HISTORICAL_IMPORT', `Imported ${historicalOrders.length} orders, ${historicalCollections.length} payments, ${historicalReturns.length} credit notes from ${batchMeta.fileName || 'Excel'}`, null, batchRecord);
-
-    return batchRecord;
   };
 
   const addMarketFeedback = (feedbackData) => {
