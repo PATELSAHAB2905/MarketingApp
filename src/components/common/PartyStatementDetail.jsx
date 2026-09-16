@@ -61,10 +61,13 @@ export default function PartyStatementDetail({
     return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   });
 
+  // Search & Type Filters
+  const [txnSearchQuery, setTxnSearchQuery] = useState('');
+  const [txnTypeFilter, setTxnTypeFilter] = useState('ALL'); // 'ALL' | 'SALE' | 'PAYMENT' | 'RETURN'
+  const [sortOrder, setSortOrder] = useState('ASC'); // 'ASC' (Chronological) | 'DESC' (Newest first)
+
   // Selected Transaction Modal State
   const [selectedTxn, setSelectedTxn] = useState(null);
-  const [partySearchOpen, setPartySearchOpen] = useState(false);
-  const [partyQuery, setPartyQuery] = useState('');
 
   // Handle Preset change
   const handlePresetSelect = (preset) => {
@@ -96,9 +99,9 @@ export default function PartyStatementDetail({
     return 'Field Marketer';
   }, [shop, marketers]);
 
-  // Vyapar-Formatted Transactions
+  // Vyapar-Formatted Transactions with filtering and sorting
   const vyaparTransactions = useMemo(() => {
-    return ledgerData.periodTransactions.map((txn) => {
+    const formatted = ledgerData.periodTransactions.map((txn) => {
       const isSale = txn.type === 'SALE';
       const isPayment = txn.type === 'PAYMENT';
       const isReturn = txn.type === 'RETURN';
@@ -146,6 +149,52 @@ export default function PartyStatementDetail({
         txnBalance,
       };
     });
+
+    // Apply inline filters
+    return formatted.filter((t) => {
+      if (txnTypeFilter !== 'ALL' && t.type !== txnTypeFilter) {
+        return false;
+      }
+      if (txnSearchQuery.trim()) {
+        const q = txnSearchQuery.toLowerCase().trim();
+        const matchRef = (t.refNo || '').toLowerCase().includes(q);
+        const matchParticular = (t.particular || '').toLowerCase().includes(q);
+        const matchType = (t.txnTypeDisplay || '').toLowerCase().includes(q);
+        const matchAmount = String(t.totalAmount || '').includes(q);
+        if (!matchRef && !matchParticular && !matchType && !matchAmount) return false;
+      }
+      return true;
+    }).sort((a, b) => {
+      if (sortOrder === 'DESC') {
+        return (b.dateIso || b.date || '').localeCompare(a.dateIso || a.date || '');
+      }
+      return (a.dateIso || a.date || '').localeCompare(b.dateIso || b.date || '');
+    });
+  }, [ledgerData, txnTypeFilter, txnSearchQuery, sortOrder]);
+
+  // Extract all line items in period for Item Details Sheet / Modal
+  const periodItemDetails = useMemo(() => {
+    const itemsList = [];
+    ledgerData.periodTransactions.forEach((txn) => {
+      if (txn.type === 'SALE' && txn.raw?.items && Array.isArray(txn.raw.items)) {
+        txn.raw.items.forEach((item, idx) => {
+          itemsList.push({
+            date: txn.date,
+            billNo: txn.refNo || `ORD-${idx + 1}`,
+            itemName: item.productName || item.name || 'Spices Item',
+            itemCode: item.productCode || item.code || '—',
+            hsn: item.hsn || item.hsnCode || '0910',
+            qty: item.quantityKg || item.quantityPouch || item.quantity || 1,
+            unit: item.unit || (item.quantityKg ? 'KG' : 'Pouch'),
+            rate: item.pricePerKg || item.sellingPrice || item.rate || 0,
+            discount: item.discount || 0,
+            tax: item.tax || 0,
+            amount: item.subtotal || item.total || (item.pricePerKg * (item.quantityKg || 1)) || 0,
+          });
+        });
+      }
+    });
+    return itemsList;
   }, [ledgerData]);
 
   // Print Handler
@@ -153,13 +202,14 @@ export default function PartyStatementDetail({
     window.print();
   };
 
-  // Excel Export Handler
+  // Multi-Sheet Excel Export Handler (Sheet 1: Party Statement, Sheet 2: Item Details)
   const handleExportExcel = () => {
     try {
+      // ── Sheet 1: Party Statement ──
       const headerRows = [
         ['PATEL SAHAB SPICES - PARTY STATEMENT REPORT'],
         [`Party Name: ${shop.name}`, `Owner: ${shop.owner || '—'}`, `Mobile: ${shop.mobile || '—'}`],
-        [`Market: ${shop.marketName || '—'}`, `Route: ${shop.routeId || '—'}`, `Marketer: ${assignedMarketer}`],
+        [`Market: ${shop.connectedMarketName || shop.marketName || '—'}`, `Route: ${shop.routeId || '—'}`, `Marketer: ${assignedMarketer}`],
         [`Statement Period: ${formatIsoToDisplay(fromDate)} To ${formatIsoToDisplay(toDate)}`],
         [],
         ['SUMMARY:'],
@@ -169,10 +219,11 @@ export default function PartyStatementDetail({
         ['Total Money-Out', 0],
         ['Total Expense', 0],
         ['Total Receivable (Net Outstanding)', ledgerData.closingBalance],
+        ['Total Payable', 0],
         [],
-        ['TRANSACTIONS:'],
-        ['DATE', 'TXN TYPE', 'REF NO.', 'PAYMENT TYPE', 'PAYMENT STATUS', 'TOTAL (₹)', 'RECEIVED / PAID (₹)', 'TXN BALANCE (₹)', 'RECEIVABLE BALANCE (₹)'],
-        ['—', 'OPENING BALANCE', '—', '—', '—', '', '', '', ledgerData.openingBalance],
+        ['TRANSACTIONS LEDGER:'],
+        ['DATE', 'TXN TYPE', 'REF NO.', 'PAYMENT TYPE', 'PAYMENT STATUS', 'TOTAL (₹)', 'RECEIVED / PAID (₹)', 'TXN BALANCE (₹)', 'RECEIVABLE BALANCE (₹)', 'PAYABLE BALANCE (₹)'],
+        ['—', 'OPENING BALANCE', '—', '—', '—', '', '', '', ledgerData.openingBalance, 0],
       ];
 
       const txnRows = vyaparTransactions.map((t) => [
@@ -185,6 +236,7 @@ export default function PartyStatementDetail({
         t.receivedAmount > 0 ? t.receivedAmount : 0,
         t.txnBalance,
         t.runningBalance,
+        0,
       ]);
 
       const closingRow = [
@@ -197,12 +249,41 @@ export default function PartyStatementDetail({
         '',
         '',
         ledgerData.closingBalance,
+        0,
       ];
 
-      const ws = XLSX.utils.aoa_to_sheet([...headerRows, ...txnRows, closingRow]);
+      const ws1 = XLSX.utils.aoa_to_sheet([...headerRows, ...txnRows, closingRow]);
+
+      // ── Sheet 2: Item Details ──
+      const itemHeaderRows = [
+        ['PATEL SAHAB SPICES - STATEMENT ITEM DETAILS'],
+        [`Party: ${shop.name}`, `Period: ${formatIsoToDisplay(fromDate)} To ${formatIsoToDisplay(toDate)}`],
+        [],
+        ['DATE', 'BILL / REF NO.', 'ITEM NAME', 'ITEM CODE', 'HSN / SAC', 'QUANTITY', 'UNIT', 'RATE (₹)', 'DISCOUNT (₹)', 'TAX (₹)', 'AMOUNT (₹)'],
+      ];
+
+      const itemDataRows = periodItemDetails.map((it) => [
+        it.date,
+        it.billNo,
+        it.itemName,
+        it.itemCode,
+        it.hsn,
+        it.qty,
+        it.unit,
+        it.rate,
+        it.discount,
+        it.tax,
+        it.amount,
+      ]);
+
+      const ws2 = XLSX.utils.aoa_to_sheet([...itemHeaderRows, ...itemDataRows]);
+
       const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, 'Party Statement');
-      XLSX.writeFile(wb, `${shop.name.replace(/[^a-zA-Z0-9]/g, '_')}_Party_Statement.xlsx`);
+      XLSX.utils.book_append_sheet(wb, ws1, 'Party Statement');
+      XLSX.utils.book_append_sheet(wb, ws2, 'Item Details');
+
+      const fileName = `${shop.name.replace(/[^a-zA-Z0-9]/g, '_')}_Party_Statement.xlsx`;
+      XLSX.writeFile(wb, fileName);
     } catch (err) {
       alert('Failed to export Excel: ' + err.message);
     }
@@ -405,9 +486,96 @@ Thank you for your business!`;
       </div>
 
       {/* ───────────────────────────────────────────────────────────── */}
-      {/* 3. VYAPAR TRANSACTION TABLE                                   */}
+      {/* 3. VYAPAR TRANSACTION TABLE & INLINE CONTROLS                 */}
       {/* ───────────────────────────────────────────────────────────── */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden">
+        {/* Inline Search & Type Filters */}
+        <div className="p-3 bg-slate-50/70 border-b border-slate-200 flex flex-wrap items-center justify-between gap-3 text-xs print:hidden">
+          {/* Filter Pills */}
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
+            <button
+              type="button"
+              onClick={() => setTxnTypeFilter('ALL')}
+              className={`px-3 py-1 rounded-xl font-bold transition-all ${
+                txnTypeFilter === 'ALL'
+                  ? 'bg-slate-900 text-white shadow-2xs'
+                  : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
+              }`}
+            >
+              All ({ledgerData.periodTransactions.length})
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setTxnTypeFilter('SALE')}
+              className={`px-3 py-1 rounded-xl font-bold transition-all ${
+                txnTypeFilter === 'SALE'
+                  ? 'bg-red-700 text-white shadow-2xs'
+                  : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
+              }`}
+            >
+              Sales
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setTxnTypeFilter('PAYMENT')}
+              className={`px-3 py-1 rounded-xl font-bold transition-all ${
+                txnTypeFilter === 'PAYMENT'
+                  ? 'bg-emerald-700 text-white shadow-2xs'
+                  : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
+              }`}
+            >
+              Payment-In
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setTxnTypeFilter('RETURN')}
+              className={`px-3 py-1 rounded-xl font-bold transition-all ${
+                txnTypeFilter === 'RETURN'
+                  ? 'bg-blue-700 text-white shadow-2xs'
+                  : 'bg-white text-slate-700 border border-slate-200 hover:bg-slate-100'
+              }`}
+            >
+              Sales Returns
+            </button>
+          </div>
+
+          {/* Search Box & Sort Toggle */}
+          <div className="flex items-center gap-2 ml-auto">
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2" />
+              <input
+                type="text"
+                value={txnSearchQuery}
+                onChange={(e) => setTxnSearchQuery(e.target.value)}
+                placeholder="Search Ref No., Details..."
+                className="bg-white border border-slate-200 rounded-xl py-1 pl-8 pr-2.5 text-xs font-medium text-slate-800 placeholder-slate-400 outline-none focus:ring-1 focus:ring-red-600 w-48 sm:w-56"
+              />
+              {txnSearchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setTxnSearchQuery('')}
+                  className="absolute right-2 top-2 text-slate-400 hover:text-slate-600"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setSortOrder(sortOrder === 'ASC' ? 'DESC' : 'ASC')}
+              className="px-2.5 py-1 bg-white hover:bg-slate-100 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 flex items-center gap-1"
+              title="Toggle Date Sorting"
+            >
+              <span className="text-[10px] text-slate-400 uppercase">Sort:</span>
+              <span>{sortOrder === 'ASC' ? 'Oldest First' : 'Newest First'}</span>
+            </button>
+          </div>
+        </div>
+
         <div className="overflow-x-auto">
           {viewMode === 'vyapar' ? (
             /* VYAPAR VIEW TABLE (Matching Screenshot) */
@@ -449,7 +617,7 @@ Thank you for your business!`;
                 {vyaparTransactions.length === 0 ? (
                   <tr>
                     <td colSpan={11} className="p-10 text-center text-slate-400 font-bold">
-                      No transactions recorded in this period.
+                      No transactions found matching the selected filters.
                     </td>
                   </tr>
                 ) : (
@@ -619,6 +787,11 @@ Thank you for your business!`;
                 <span className="text-slate-700 font-bold">Total Money-out: </span>
                 <strong className="text-slate-950 font-black">₹ 0.00</strong>
               </div>
+
+              <div>
+                <span className="text-slate-700 font-bold">Total Payable: </span>
+                <strong className="text-slate-950 font-black">₹ 0.00</strong>
+              </div>
             </div>
 
             {/* Right Side Large Highlight: Total Receivable */}
@@ -639,7 +812,7 @@ Thank you for your business!`;
       {/* ───────────────────────────────────────────────────────────── */}
       {selectedTxn && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
-          <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden p-6 space-y-4 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white w-full max-w-xl rounded-3xl shadow-2xl overflow-hidden p-6 space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex justify-between items-center border-b border-slate-100 pb-3">
               <div>
                 <span className="text-[10px] font-black uppercase tracking-wider text-amber-700 bg-amber-50 px-2 py-0.5 rounded">
@@ -680,35 +853,49 @@ Thank you for your business!`;
             </div>
 
             {/* If Order / Sale Details */}
-            {selectedTxn.type === 'SALE' && selectedTxn.raw?.items && (
+            {selectedTxn.type === 'SALE' && (
               <div className="space-y-2 text-xs">
                 <p className="font-bold text-slate-700 uppercase text-[10px]">ORDERED ITEMS BREAKDOWN:</p>
-                <div className="border border-slate-200 rounded-xl overflow-hidden">
-                  <table className="w-full text-left text-[11px]">
-                    <thead className="bg-slate-100 text-slate-600 uppercase font-bold text-[9px]">
-                      <tr>
-                        <th className="p-2">Item</th>
-                        <th className="p-2 text-right">Qty (KG)</th>
-                        <th className="p-2 text-right">Rate</th>
-                        <th className="p-2 text-right">Subtotal</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {selectedTxn.raw.items.map((it, idx) => (
-                        <tr key={idx}>
-                          <td className="p-2 font-bold text-slate-800">
-                            {it.productName} {it.packSize && `(${it.packSize})`}
-                          </td>
-                          <td className="p-2 text-right font-bold">
-                            {it.quantityKg ? `${it.quantityKg} KG` : (it.quantityPouch ? `${it.quantityPouch} Pouches` : `${it.quantity || 1} KG`)}
-                          </td>
-                          <td className="p-2 text-right font-bold text-emerald-700">₹{it.pricePerKg || it.sellingPrice}</td>
-                          <td className="p-2 text-right font-black text-slate-900">₹{it.subtotal}</td>
+                {selectedTxn.raw?.items && selectedTxn.raw.items.length > 0 ? (
+                  <div className="border border-slate-200 rounded-xl overflow-hidden">
+                    <table className="w-full text-left text-[11px]">
+                      <thead className="bg-slate-100 text-slate-600 uppercase font-bold text-[9px]">
+                        <tr>
+                          <th className="p-2">Item Name</th>
+                          <th className="p-2 text-right">Qty</th>
+                          <th className="p-2 text-right">Unit</th>
+                          <th className="p-2 text-right">Rate</th>
+                          <th className="p-2 text-right">Subtotal</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {selectedTxn.raw.items.map((it, idx) => (
+                          <tr key={idx}>
+                            <td className="p-2 font-bold text-slate-800">
+                              {it.productName || it.name || 'Spices Item'} {it.packSize && `(${it.packSize})`}
+                            </td>
+                            <td className="p-2 text-right font-bold">
+                              {it.quantityKg || it.quantityPouch || it.quantity || 1}
+                            </td>
+                            <td className="p-2 text-right text-slate-500 font-medium">
+                              {it.unit || (it.quantityKg ? 'KG' : 'Pouch')}
+                            </td>
+                            <td className="p-2 text-right font-bold text-emerald-700">
+                              ₹{it.pricePerKg || it.sellingPrice || it.rate || 0}
+                            </td>
+                            <td className="p-2 text-right font-black text-slate-900">
+                              ₹{it.subtotal || it.total || (it.pricePerKg * (it.quantityKg || 1)) || 0}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl text-center text-slate-500 font-medium">
+                    Item details not available for this historical transaction.
+                  </div>
+                )}
               </div>
             )}
 
