@@ -879,6 +879,97 @@ export default function OldDataImport({ onNavigate }) {
         }
       }
 
+      // --- C. Fallback: If no orders were generated from Statement sheet, but Item Details sheet has items ---
+      if (detectedOrdersList.length === 0 && detectedItemsList.length > 0) {
+        const fallbackPartyName =
+          defaultPartyName ||
+          (fileName ? fileName.replace(/\.(xlsx|xls|csv)$/i, '').replace(/party[\s_-]*statement/gi, '').replace(/statement/gi, '').replace(/report/gi, '').replace(/[_-]+/g, ' ').trim() : '') ||
+          `${selectedMarket?.name || 'Market'} Customer`;
+
+        const groupedByInvoice = new Map();
+
+        detectedItemsList.forEach((it, idx) => {
+          const pName = it.partyName || fallbackPartyName;
+          const inv = it.invoiceNo || `BILL-${Math.floor(idx / 5) + 1}`;
+          const d = it.date || getFormattedDate();
+          const groupKey = `${pName}___${inv}___${d}`;
+
+          if (!groupedByInvoice.has(groupKey)) {
+            groupedByInvoice.set(groupKey, {
+              partyName: pName,
+              invoiceNo: inv,
+              date: d,
+              items: [],
+            });
+          }
+          groupedByInvoice.get(groupKey).items.push(it);
+        });
+
+        groupedByInvoice.forEach((group) => {
+          const normPName = normalizeStr(group.partyName);
+
+          if (!detectedPartiesMap.has(normPName)) {
+            let matchedShop = null;
+            if (defaultPartyPhone && existingShopsByPhone.has(defaultPartyPhone)) {
+              matchedShop = existingShopsByPhone.get(defaultPartyPhone);
+            } else if (existingShopsByName.has(normPName)) {
+              matchedShop = existingShopsByName.get(normPName);
+            }
+
+            const partyObj = {
+              id: matchedShop ? matchedShop.id : `shop-hist-${Date.now()}-${detectedPartiesMap.size + 1}`,
+              name: group.partyName,
+              owner: matchedShop?.owner || group.partyName,
+              phone: defaultPartyPhone || matchedShop?.mobile || '',
+              mobile: defaultPartyPhone || matchedShop?.mobile || '',
+              email: matchedShop?.email || '',
+              address: matchedShop?.address || `${selectedMarket?.name || 'Main Market'} Road`,
+              marketId: selectedMarketId,
+              marketName: selectedMarket?.name || 'Market',
+              routeId: selectedMarket?.routeId || '',
+              openingReceivable: 0,
+              openingPayable: 0,
+              isNew: !matchedShop,
+              existingShopId: matchedShop ? matchedShop.id : null,
+              source: 'OLD_IMPORT',
+              isHistorical: true,
+            };
+            detectedPartiesMap.set(normPName, partyObj);
+          }
+
+          const currentParty = detectedPartiesMap.get(normPName);
+          const totalKg = group.items.reduce((sum, it) => sum + (it.quantityKg || it.quantity || 0), 0);
+          const totalAmount = group.items.reduce((sum, it) => sum + (it.amount || it.subtotal || 0), 0);
+          const saleKey = `${normPName}_${group.invoiceNo.trim()}_${group.date}`;
+          const isDuplicate = existingOrderKeys.has(saleKey);
+
+          const orderRecord = {
+            id: `HIST-ORD-${group.invoiceNo}-${Date.now()}-${detectedOrdersList.length}`,
+            invoiceNo: group.invoiceNo,
+            invoiceRef: group.invoiceNo,
+            billNo: group.invoiceNo,
+            shopId: currentParty.id,
+            shopName: group.partyName,
+            marketId: selectedMarketId,
+            marketName: selectedMarket?.name || 'Market',
+            date: group.date,
+            time: '10:00 AM',
+            totalKg,
+            totalPouches: 0,
+            subtotal: totalAmount,
+            grandTotal: totalAmount,
+            paidAmount: 0,
+            items: group.items,
+            remark: 'Imported from Items Sheet',
+            source: 'OLD_IMPORT',
+            dataSource: 'OLD IMPORT',
+            isHistorical: true,
+            isDuplicate,
+          };
+          detectedOrdersList.push(orderRecord);
+        });
+      }
+
       // Compute Summary Metrics
       const partiesArr = Array.from(detectedPartiesMap.values());
       const newPartiesCount = partiesArr.filter((p) => p.isNew).length;
@@ -1899,11 +1990,53 @@ export default function OldDataImport({ onNavigate }) {
               {/* STEP 2: COLUMN MAPPING REVIEW */}
               {wizardStep === 2 && (
                 <div className="space-y-5">
-                  <div className="bg-amber-50 border border-amber-200 p-4 rounded-2xl text-xs text-amber-950 font-medium">
-                    <p className="font-bold text-amber-900 uppercase">Multi-Sheet Structure Detected</p>
-                    <p className="mt-0.5">
-                      File: <strong>{fileName}</strong> • Market: <strong>{selectedMarket?.name}</strong> • Sheets: {sheetNamesList.join(', ')}
-                    </p>
+                  {/* Sheet Selectors */}
+                  <div className="bg-amber-50/50 border border-amber-200 p-4 rounded-2xl text-xs space-y-2">
+                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                      <div>
+                        <p className="font-bold text-amber-900 uppercase">Workbook Sheets Detected</p>
+                        <p className="text-slate-600">File: <strong>{fileName}</strong> • Market: <strong>{selectedMarket?.name}</strong></p>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-3">
+                        <div>
+                          <label className="text-[10px] font-black uppercase text-slate-600 block mb-1">Statement Sheet</label>
+                          <select
+                            value={statementSheetName}
+                            onChange={(e) => {
+                              const sName = e.target.value;
+                              setStatementSheetName(sName);
+                              autoMapStatementColumns(rawSheets[sName] || []);
+                            }}
+                            className="p-2 bg-white border border-slate-300 rounded-xl font-bold text-xs"
+                          >
+                            {sheetNamesList.map((sn) => (
+                              <option key={sn} value={sn}>{sn}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="text-[10px] font-black uppercase text-slate-600 block mb-1">Item Details Sheet</label>
+                          <select
+                            value={itemsSheetName}
+                            onChange={(e) => {
+                              const sName = e.target.value;
+                              setItemsSheetName(sName);
+                              if (sName && rawSheets[sName]) {
+                                autoMapItemColumns(rawSheets[sName]);
+                              }
+                            }}
+                            className="p-2 bg-white border border-slate-300 rounded-xl font-bold text-xs"
+                          >
+                            <option value="">-- None / Single Sheet --</option>
+                            {sheetNamesList.map((sn) => (
+                              <option key={sn} value={sn}>{sn}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    </div>
                   </div>
 
                   {/* Party Context Card (Single-Party Statement / Default) */}
