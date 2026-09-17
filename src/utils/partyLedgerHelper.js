@@ -153,14 +153,34 @@ export const isShopMatchingRecord = (record, targetShop) => {
  * 3. Credit Note / Sales Return: Decreases running receivable by -credit.
  * 4. Closing Receivable = Opening + Total Sales - Total Collections (Payment-In + Direct on Sale) - Total Returns.
  */
-export const calculatePartyLedger = ({
-  shop,
-  orders = [],
-  collections = [],
-  returns = [],
-  fromDateIso = '2020-01-01',
-  toDateIso = '2099-12-31',
-}) => {
+export const calculatePartyLedger = (
+  arg1,
+  arg2 = [],
+  arg3 = [],
+  arg4 = [],
+  arg5 = '2020-01-01',
+  arg6 = '2099-12-31'
+) => {
+  let shop, orders, collections, returns, fromDateIso, toDateIso;
+
+  if (arg1 && typeof arg1 === 'object' && 'shop' in arg1) {
+    // Destructured object: calculatePartyLedger({ shop, orders, collections, returns, ... })
+    shop = arg1.shop;
+    orders = Array.isArray(arg1.orders) ? arg1.orders : [];
+    collections = Array.isArray(arg1.collections) ? arg1.collections : [];
+    returns = Array.isArray(arg1.returns) ? arg1.returns : [];
+    fromDateIso = typeof arg1.fromDateIso === 'string' ? arg1.fromDateIso : '2020-01-01';
+    toDateIso = typeof arg1.toDateIso === 'string' ? arg1.toDateIso : '2099-12-31';
+  } else {
+    // Positional parameters: calculatePartyLedger(shop, orders, collections, returns, ...)
+    shop = arg1;
+    orders = Array.isArray(arg2) ? arg2 : [];
+    collections = Array.isArray(arg3) ? arg3 : [];
+    returns = Array.isArray(arg4) ? arg4 : [];
+    fromDateIso = typeof arg5 === 'string' ? arg5 : '2020-01-01';
+    toDateIso = typeof arg6 === 'string' ? arg6 : '2099-12-31';
+  }
+
   if (!shop) {
     return {
       openingBalance: 0,

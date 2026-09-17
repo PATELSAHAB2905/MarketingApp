@@ -30,7 +30,7 @@ export default function CollectionForm({ shop, editingCollection, onClose, onCol
   const targetDue = getShopOutstanding ? getShopOutstanding(targetShop) : (targetShop?.outstanding || 0);
 
   const [amount, setAmount] = useState(
-    editingCollection ? editingCollection.amount : (targetDue || 5000)
+    editingCollection ? editingCollection.amount : (targetDue > 0 ? targetDue : 5000)
   );
   const [paymentMode, setPaymentMode] = useState(editingCollection?.paymentMode || 'Cash');
   const [invoiceRef, setInvoiceRef] = useState(
@@ -232,8 +232,8 @@ export default function CollectionForm({ shop, editingCollection, onClose, onCol
                 setSelectedShopId(sid);
                 const s = shops.find((sh) => sh.id === sid);
                 if (s) {
-                  const sDue = getShopOutstanding ? getShopOutstanding(s) : (s.outstanding || 5000);
-                  setAmount(sDue || 5000);
+                  const sDue = getShopOutstanding ? getShopOutstanding(s) : (s.outstanding || 0);
+                  setAmount(sDue > 0 ? sDue : 5000);
                 }
               }}
               className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3 text-sm font-bold text-slate-800"
