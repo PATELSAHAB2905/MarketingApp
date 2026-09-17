@@ -253,29 +253,13 @@ export const DataProvider = ({ children }) => {
           setFirebaseError(null);
           setLastSyncedTime(getFormattedTime());
 
-          // Check if an item belongs to a permanently purged/deleted party
-          const isPurgedShopRecord = (item) => {
-            if (!item) return false;
-            const name = (item.name || item.shopName || item.customerName || item.partyName || '').toLowerCase();
-            const phone = (item.mobile || item.phone || '').replace(/\D/g, '');
-            const id = (item.id || item.shopId || '').toLowerCase();
-            if (phone && phone.includes('8889782625')) return true;
-            if (name.includes('aakash') && (name.includes('kirana') || name.includes('rathore') || name.includes('jhadla') || name.includes('jhalda'))) return true;
-            if (id.includes('aakash')) return true;
-            return false;
-          };
-
           // Merge function to prevent duplication and preserve local updates
-          const mergeItems = (incoming, setLocalState, storageKey, collectionName) => {
+          const mergeItems = (incoming, setLocalState, storageKey) => {
             if (!incoming || incoming.length === 0) return;
             setLocalState((prev) => {
               const map = new Map();
-              prev.filter((item) => !isPurgedShopRecord(item)).forEach((item) => map.set(String(item.id), item));
+              prev.forEach((item) => map.set(String(item.id), item));
               incoming.forEach((item) => {
-                if (isPurgedShopRecord(item)) {
-                  if (collectionName) deleteDocument(collectionName, item.id).catch(() => {});
-                  return;
-                }
                 const existing = map.get(String(item.id));
                 map.set(String(item.id), existing ? { ...existing, ...item } : item);
               });
@@ -287,10 +271,10 @@ export const DataProvider = ({ children }) => {
             });
           };
 
-          unsubs.push(subscribeToCollection('orders', (items) => mergeItems(items, setOrders, 'PATEL_ORDERS', 'orders')));
-          unsubs.push(subscribeToCollection('collections', (items) => mergeItems(items, setCollections, 'PATEL_COLLECTIONS', 'collections')));
-          unsubs.push(subscribeToCollection('returns', (items) => mergeItems(items, setReturns, 'PATEL_RETURNS', 'returns')));
-          unsubs.push(subscribeToCollection('shops', (items) => mergeItems(items, setShops, 'PATEL_SHOPS', 'shops')));
+          unsubs.push(subscribeToCollection('orders', (items) => mergeItems(items, setOrders, 'PATEL_ORDERS')));
+          unsubs.push(subscribeToCollection('collections', (items) => mergeItems(items, setCollections, 'PATEL_COLLECTIONS')));
+          unsubs.push(subscribeToCollection('returns', (items) => mergeItems(items, setReturns, 'PATEL_RETURNS')));
+          unsubs.push(subscribeToCollection('shops', (items) => mergeItems(items, setShops, 'PATEL_SHOPS')));
           unsubs.push(subscribeToCollection('markets', (items) => mergeItems(items, setMarkets, 'PATEL_MARKETS')));
           unsubs.push(subscribeToCollection('marketers', (items) => mergeItems(items, setMarketers, 'PATEL_MARKETERS')));
           unsubs.push(subscribeToCollection('marketRoutes', (items) => mergeItems(items, setMarketRoutes, 'PATEL_MARKET_ROUTES')));
@@ -319,95 +303,6 @@ export const DataProvider = ({ children }) => {
       isMounted = false;
       unsubs.forEach((u) => typeof u === 'function' && u());
     };
-  }, []);
-
-  // Automatic Clean-up / Purge on app load for any deleted party (e.g. Aakash Kirana Jhalda / Jhadla)
-  useEffect(() => {
-    const isTargetPurge = (item) => {
-      if (!item) return false;
-      const name = (item.name || item.shopName || item.customerName || item.partyName || '').toLowerCase();
-      const phone = (item.mobile || item.phone || '').replace(/\D/g, '');
-      const id = (item.id || item.shopId || '').toLowerCase();
-      if (phone && (phone.includes('8889782625') || phone === '8889782625')) return true;
-      if (name.includes('aakash') && (name.includes('kirana') || name.includes('rathore') || name.includes('jhadla') || name.includes('jhalda'))) return true;
-      if (id.includes('aakash')) return true;
-      return false;
-    };
-
-    // Purge from Shops
-    setShops((prev) => {
-      const matching = prev.filter(isTargetPurge);
-      if (matching.length > 0) {
-        matching.forEach((s) => deleteDocument('shops', s.id).catch(() => {}));
-        const remaining = prev.filter((s) => !isTargetPurge(s));
-        localStorage.setItem('PATEL_SHOPS', JSON.stringify(remaining));
-        return remaining;
-      }
-      return prev;
-    });
-
-    // Purge from Orders
-    setOrders((prev) => {
-      const matching = prev.filter(isTargetPurge);
-      if (matching.length > 0) {
-        matching.forEach((o) => deleteDocument('orders', o.id).catch(() => {}));
-        const remaining = prev.filter((o) => !isTargetPurge(o));
-        localStorage.setItem('PATEL_ORDERS', JSON.stringify(remaining));
-        return remaining;
-      }
-      return prev;
-    });
-
-    // Purge from Collections
-    setCollections((prev) => {
-      const matching = prev.filter(isTargetPurge);
-      if (matching.length > 0) {
-        matching.forEach((c) => deleteDocument('collections', c.id).catch(() => {}));
-        const remaining = prev.filter((c) => !isTargetPurge(c));
-        localStorage.setItem('PATEL_COLLECTIONS', JSON.stringify(remaining));
-        return remaining;
-      }
-      return prev;
-    });
-
-    // Purge from Returns
-    setReturns((prev) => {
-      const matching = prev.filter(isTargetPurge);
-      if (matching.length > 0) {
-        matching.forEach((r) => deleteDocument('returns', r.id).catch(() => {}));
-        const remaining = prev.filter((r) => !isTargetPurge(r));
-        localStorage.setItem('PATEL_RETURNS', JSON.stringify(remaining));
-        return remaining;
-      }
-      return prev;
-    });
-
-    // Purge from Visits, Photos, Complaints, Followups, Leads
-    setVisits((prev) => {
-      const remaining = prev.filter((v) => !isTargetPurge(v));
-      if (remaining.length !== prev.length) localStorage.setItem('PATEL_VISITS', JSON.stringify(remaining));
-      return remaining;
-    });
-    setShopPhotos((prev) => {
-      const remaining = prev.filter((p) => !isTargetPurge(p));
-      if (remaining.length !== prev.length) localStorage.setItem('PATEL_SHOP_PHOTOS', JSON.stringify(remaining));
-      return remaining;
-    });
-    setComplaints((prev) => {
-      const remaining = prev.filter((c) => !isTargetPurge(c));
-      if (remaining.length !== prev.length) localStorage.setItem('PATEL_COMPLAINTS', JSON.stringify(remaining));
-      return remaining;
-    });
-    setFollowups((prev) => {
-      const remaining = prev.filter((f) => !isTargetPurge(f));
-      if (remaining.length !== prev.length) localStorage.setItem('PATEL_FOLLOWUPS', JSON.stringify(remaining));
-      return remaining;
-    });
-    setLeads((prev) => {
-      const remaining = prev.filter((l) => !isTargetPurge({ shopName: l.shopName, mobile: l.mobile }));
-      if (remaining.length !== prev.length) localStorage.setItem('PATEL_LEADS', JSON.stringify(remaining));
-      return remaining;
-    });
   }, []);
 
   // Format Helper IST Asia/Kolkata
