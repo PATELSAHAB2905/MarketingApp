@@ -33,6 +33,8 @@ import {
   TrendingUp,
   Tag,
   Plus,
+  Edit,
+  Trash2,
 } from 'lucide-react';
 
 import {
@@ -182,13 +184,57 @@ export default function OldDataImport({ onNavigate }) {
     returns,
     importBatches = [],
     importHistoricalBusinessData,
+    updateShop,
+    deleteShop,
     getFormattedDate,
     getFormattedTime,
   } = useData();
 
+  // Party Edit & Delete state
+  const [editingParty, setEditingParty] = useState(null);
+  const [editPartyName, setEditPartyName] = useState('');
+  const [editPartyOwner, setEditPartyOwner] = useState('');
+  const [editPartyMobile, setEditPartyMobile] = useState('');
+  const [editPartyAddress, setEditPartyAddress] = useState('');
+  const [editPartyMarketId, setEditPartyMarketId] = useState('');
+  const [editPartyOutstanding, setEditPartyOutstanding] = useState('');
+
+  const [deletingParty, setDeletingParty] = useState(null);
+  const [deletePartyTransactions, setDeletePartyTransactions] = useState(true);
+
+  const handleOpenEditParty = (party) => {
+    setEditingParty(party);
+    setEditPartyName(party.name || '');
+    setEditPartyOwner(party.owner || '');
+    setEditPartyMobile(party.mobile || party.phone || '');
+    setEditPartyAddress(party.address || '');
+    setEditPartyMarketId(party.marketId || markets[0]?.id || '');
+    setEditPartyOutstanding(party.outstanding !== undefined ? String(party.outstanding) : '0');
+  };
+
+  const handleSaveEditParty = (e) => {
+    e.preventDefault();
+    if (!editingParty) return;
+    updateShop(editingParty.id, {
+      name: editPartyName.trim(),
+      owner: editPartyOwner.trim(),
+      mobile: editPartyMobile.trim(),
+      address: editPartyAddress.trim(),
+      marketId: editPartyMarketId,
+      outstanding: editPartyOutstanding ? Number(editPartyOutstanding) : 0,
+    });
+    setEditingParty(null);
+  };
+
+  const handleConfirmDeleteParty = () => {
+    if (!deletingParty) return;
+    deleteShop(deletingParty.id, deletePartyTransactions);
+    setDeletingParty(null);
+  };
+
   // Active Main View Tab
   // 1. master, 2. sales, 3. items, 4. collections, 5. returns, 6. opening, 7. history, 8. errors
-  const [activeTab, setActiveTab] = useState('upload'); // 'upload' | 'parties' | 'sales' | 'items' | 'collections' | 'returns' | 'opening' | 'history' | 'errors'
+  const [activeTab, setActiveTab] = useState('parties'); // 'parties' | 'sales' | 'items' | 'collections' | 'returns' | 'opening' | 'history' | 'errors'
 
   // Wizard Upload State
   const [isWizardOpen, setIsWizardOpen] = useState(false);
@@ -1397,12 +1443,13 @@ export default function OldDataImport({ onNavigate }) {
                   <th className="p-3.5 text-right">Opening Pay.</th>
                   <th className="p-3.5 text-right">Current Outstanding</th>
                   <th className="p-3.5 text-center">Status</th>
+                  <th className="p-3.5 text-center">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium">
                 {filteredShopsList.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="p-8 text-center text-slate-400 font-bold">
+                    <td colSpan={8} className="p-8 text-center text-slate-400 font-bold">
                       No historical parties found. Upload an Excel file to import.
                     </td>
                   </tr>
@@ -1435,6 +1482,26 @@ export default function OldDataImport({ onNavigate }) {
                         <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-amber-900 border border-amber-200">
                           HISTORICAL
                         </span>
+                      </td>
+                      <td className="p-3.5 text-center">
+                        <div className="flex items-center justify-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEditParty(s)}
+                            className="p-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-xs font-bold transition-all border border-blue-200"
+                            title="Edit / Rename Party"
+                          >
+                            <Edit className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { setDeletingParty(s); setDeletePartyTransactions(true); }}
+                            className="p-1.5 bg-red-50 hover:bg-red-100 text-red-700 rounded-lg text-xs font-bold transition-all border border-red-200"
+                            title="Delete Party and All Records"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))
@@ -2550,6 +2617,172 @@ export default function OldDataImport({ onNavigate }) {
                   </div>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ────────────────────────────────────────────────────────────────── */}
+      {/* 6. EDIT PARTY MODAL (HISTORICAL MASTER)                           */}
+      {/* ────────────────────────────────────────────────────────────────── */}
+      {editingParty && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-lg rounded-3xl shadow-2xl overflow-hidden max-h-[90vh] flex flex-col">
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+              <div>
+                <h2 className="text-xl font-black text-slate-900 flex items-center gap-2">
+                  <Edit className="w-5 h-5 text-blue-600" />
+                  EDIT HISTORICAL PARTY
+                </h2>
+                <p className="text-xs text-slate-400 mt-0.5">Rename party name, update contact number or market.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingParty(null)}
+                className="p-2 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-700"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="overflow-y-auto flex-1 p-6">
+              <form id="hist-party-edit-form" onSubmit={handleSaveEditParty} className="space-y-3 text-xs">
+                <div>
+                  <label className="block font-bold text-slate-600 mb-1">Party / Shop Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={editPartyName}
+                    onChange={(e) => setEditPartyName(e.target.value)}
+                    className="w-full border border-slate-200 rounded-xl p-2.5 font-bold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="e.g., Aakash Rathore Kirana Jhadla"
+                  />
+                  <p className="text-[10px] text-slate-400 mt-1">Renaming this party will automatically cascade to all historical bills and payment receipts.</p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block font-bold text-slate-600 mb-1">Owner Name</label>
+                    <input
+                      type="text"
+                      value={editPartyOwner}
+                      onChange={(e) => setEditPartyOwner(e.target.value)}
+                      className="w-full border border-slate-200 rounded-xl p-2 font-bold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block font-bold text-slate-600 mb-1">Mobile / Phone</label>
+                    <input
+                      type="tel"
+                      value={editPartyMobile}
+                      onChange={(e) => setEditPartyMobile(e.target.value)}
+                      className="w-full border border-slate-200 rounded-xl p-2 font-bold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-600 mb-1">Address</label>
+                  <input
+                    type="text"
+                    value={editPartyAddress}
+                    onChange={(e) => setEditPartyAddress(e.target.value)}
+                    className="w-full border border-slate-200 rounded-xl p-2 font-medium focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-600 mb-1">Market</label>
+                  <select
+                    value={editPartyMarketId}
+                    onChange={(e) => setEditPartyMarketId(e.target.value)}
+                    className="w-full border border-slate-200 rounded-xl p-2.5 font-bold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  >
+                    {markets.map((m) => (
+                      <option key={m.id} value={m.id}>{m.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-600 mb-1">Outstanding Balance (₹)</label>
+                  <input
+                    type="number"
+                    value={editPartyOutstanding}
+                    onChange={(e) => setEditPartyOutstanding(e.target.value)}
+                    className="w-full border border-slate-200 rounded-xl p-2.5 font-bold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </form>
+            </div>
+
+            <div className="p-6 border-t border-slate-100 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setEditingParty(null)}
+                className="flex-1 py-3 bg-slate-100 text-slate-700 font-bold rounded-xl hover:bg-slate-200"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                form="hist-party-edit-form"
+                className="flex-1 py-3 bg-blue-700 text-white font-bold rounded-xl hover:bg-blue-800"
+              >
+                Save Changes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ────────────────────────────────────────────────────────────────── */}
+      {/* 7. DELETE PARTY CONFIRMATION MODAL                                */}
+      {/* ────────────────────────────────────────────────────────────────── */}
+      {deletingParty && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden p-6 space-y-4">
+            <div className="w-12 h-12 bg-red-100 text-red-700 rounded-2xl flex items-center justify-center mx-auto">
+              <Trash2 className="w-6 h-6" />
+            </div>
+
+            <div className="text-center space-y-1">
+              <h3 className="text-lg font-black text-slate-900">Delete Party From Everywhere?</h3>
+              <p className="text-xs text-slate-500 font-medium">
+                Are you sure you want to delete <strong className="text-slate-800">{deletingParty.name}</strong>?
+              </p>
+            </div>
+
+            <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200 text-xs space-y-2">
+              <label className="flex items-start gap-2 cursor-pointer font-bold text-slate-700">
+                <input
+                  type="checkbox"
+                  checked={deletePartyTransactions}
+                  onChange={(e) => setDeletePartyTransactions(e.target.checked)}
+                  className="mt-0.5 rounded text-red-600 focus:ring-red-500"
+                />
+                <span>Delete from EVERYWHERE (Historical Data Import, Shops Master, Party Statement, Bills & Receipts)</span>
+              </label>
+              <p className="text-[10px] text-slate-400 pl-5">
+                All bills, line items, payment-in receipts, and returns of this party will be permanently deleted from the entire application.
+              </p>
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setDeletingParty(null)}
+                className="flex-1 py-2.5 bg-slate-100 text-slate-700 font-bold rounded-xl hover:bg-slate-200 text-xs"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDeleteParty}
+                className="flex-1 py-2.5 bg-red-700 text-white font-bold rounded-xl hover:bg-red-800 text-xs"
+              >
+                Delete Everywhere
+              </button>
             </div>
           </div>
         </div>

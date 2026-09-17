@@ -23,6 +23,7 @@ import {
   fetchAllDataFromFirebase,
   COLLECTIONS,
 } from '../services/syncService';
+import { isShopMatchingRecord } from '../utils/partyLedgerHelper';
 
 const DataContext = createContext();
 
@@ -1870,11 +1871,11 @@ export const DataProvider = ({ children }) => {
       // If party name changed, cascade update orders, collections, returns
       if (updatedData.name && oldShopName && updatedData.name !== oldShopName) {
         const newName = updatedData.name;
-        const oldNorm = oldShopName.toLowerCase().trim();
+        const fakeOldShop = { id: shopId, name: oldShopName };
 
         setOrders((prev) => {
           const updated = prev.map((o) => {
-            if (o.shopId === shopId || (o.shopName && o.shopName.toLowerCase().trim() === oldNorm)) {
+            if (isShopMatchingRecord(o, fakeOldShop)) {
               return { ...o, shopName: newName, shopId };
             }
             return o;
@@ -1885,7 +1886,7 @@ export const DataProvider = ({ children }) => {
 
         setCollections((prev) => {
           const updated = prev.map((c) => {
-            if (c.shopId === shopId || (c.shopName && c.shopName.toLowerCase().trim() === oldNorm)) {
+            if (isShopMatchingRecord(c, fakeOldShop)) {
               return { ...c, shopName: newName, shopId };
             }
             return c;
@@ -1896,7 +1897,7 @@ export const DataProvider = ({ children }) => {
 
         setReturns((prev) => {
           const updated = prev.map((r) => {
-            if (r.shopId === shopId || (r.shopName && r.shopName.toLowerCase().trim() === oldNorm)) {
+            if (isShopMatchingRecord(r, fakeOldShop)) {
               return { ...r, shopName: newName, shopId };
             }
             return r;
@@ -1912,40 +1913,82 @@ export const DataProvider = ({ children }) => {
   };
 
   const deleteShop = (shopId, deleteTransactions = true) => {
-    const targetShop = shops.find((s) => s.id === shopId);
-    if (!targetShop) return false;
+    const targetShop = shops.find((s) => s.id === shopId) || { id: shopId, name: '' };
 
-    const sNorm = (targetShop.name || '').toLowerCase().trim();
-
+    // 1. Remove from shops master (matches by exact ID or fuzzy name)
     setShops((prev) => {
-      const remaining = prev.filter((s) => s.id !== shopId);
+      const remaining = prev.filter((s) => s.id !== shopId && !isShopMatchingRecord(s, targetShop));
       localStorage.setItem('PATEL_SHOPS', JSON.stringify(remaining));
       return remaining;
     });
 
+    // Delete shop doc from Firestore
     deleteDocument('shops', shopId).catch((err) => console.warn('Firestore delete shop error:', err));
 
     if (deleteTransactions) {
+      // 2. Delete Orders (Historical & Live)
       setOrders((prev) => {
-        const remaining = prev.filter((o) => o.shopId !== shopId && (!o.shopName || o.shopName.toLowerCase().trim() !== sNorm));
+        const deleted = prev.filter((o) => isShopMatchingRecord(o, targetShop));
+        deleted.forEach((o) => deleteDocument('orders', o.id).catch(() => {}));
+        const remaining = prev.filter((o) => !isShopMatchingRecord(o, targetShop));
         localStorage.setItem('PATEL_ORDERS', JSON.stringify(remaining));
         return remaining;
       });
 
+      // 3. Delete Collections / Payments (Historical & Live)
       setCollections((prev) => {
-        const remaining = prev.filter((c) => c.shopId !== shopId && (!c.shopName || c.shopName.toLowerCase().trim() !== sNorm));
+        const deleted = prev.filter((c) => isShopMatchingRecord(c, targetShop));
+        deleted.forEach((c) => deleteDocument('collections', c.id).catch(() => {}));
+        const remaining = prev.filter((c) => !isShopMatchingRecord(c, targetShop));
         localStorage.setItem('PATEL_COLLECTIONS', JSON.stringify(remaining));
         return remaining;
       });
 
+      // 4. Delete Returns (Historical & Live)
       setReturns((prev) => {
-        const remaining = prev.filter((r) => r.shopId !== shopId && (!r.shopName || r.shopName.toLowerCase().trim() !== sNorm));
+        const deleted = prev.filter((r) => isShopMatchingRecord(r, targetShop));
+        deleted.forEach((r) => deleteDocument('returns', r.id).catch(() => {}));
+        const remaining = prev.filter((r) => !isShopMatchingRecord(r, targetShop));
         localStorage.setItem('PATEL_RETURNS', JSON.stringify(remaining));
+        return remaining;
+      });
+
+      // 5. Delete Visits
+      setVisits((prev) => {
+        const remaining = prev.filter((v) => !isShopMatchingRecord(v, targetShop));
+        localStorage.setItem('PATEL_VISITS', JSON.stringify(remaining));
+        return remaining;
+      });
+
+      // 6. Delete Complaints
+      setComplaints((prev) => {
+        const remaining = prev.filter((cmp) => !isShopMatchingRecord(cmp, targetShop));
+        localStorage.setItem('PATEL_COMPLAINTS', JSON.stringify(remaining));
+        return remaining;
+      });
+
+      // 7. Delete Follow-ups
+      setFollowups((prev) => {
+        const remaining = prev.filter((flw) => !isShopMatchingRecord(flw, targetShop));
+        localStorage.setItem('PATEL_FOLLOWUPS', JSON.stringify(remaining));
+        return remaining;
+      });
+
+      // 8. Delete Photos
+      setShopPhotos((prev) => {
+        const remaining = prev.filter((p) => !isShopMatchingRecord(p, targetShop));
+        localStorage.setItem('PATEL_SHOP_PHOTOS', JSON.stringify(remaining));
+        return remaining;
+      });
+
+      // 9. Delete Leads
+      setLeads((prev) => {
+        const remaining = prev.filter((l) => !isShopMatchingRecord({ shopName: l.shopName, mobile: l.mobile }, targetShop));
         return remaining;
       });
     }
 
-    addAuditLog('Admin', 'ADMIN', 'DELETE_SHOP', `Deleted shop ${targetShop.name}`, targetShop, null);
+    addAuditLog('Admin', 'ADMIN', 'DELETE_SHOP', `Deleted shop ${targetShop.name || shopId} and all associated historical & current transactions`, targetShop, null);
     return true;
   };
 
