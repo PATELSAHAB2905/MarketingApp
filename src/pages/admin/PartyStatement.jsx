@@ -19,6 +19,8 @@ import {
   TrendingUp,
 } from 'lucide-react';
 
+import { isShopMatchingRecord } from '../../utils/partyLedgerHelper';
+
 export default function PartyStatement() {
   const { shops, markets, marketRoutes, marketers, orders, collections, returns } = useData();
 
@@ -38,16 +40,25 @@ export default function PartyStatement() {
   // Pre-calculate live outstanding & transaction metrics for all shops
   const enrichedShops = useMemo(() => {
     return shops.map((s) => {
-      const sNorm = (s.name || '').toLowerCase().trim();
-      const shopOrders = orders.filter((o) => o.shopId === s.id || (o.shopName && o.shopName.toLowerCase().trim() === sNorm));
-      const shopCols = collections.filter((c) => c.shopId === s.id || (c.shopName && c.shopName.toLowerCase().trim() === sNorm));
-      const shopRets = returns.filter((r) => r.shopId === s.id || (r.shopName && r.shopName.toLowerCase().trim() === sNorm));
+      const shopOrders = orders.filter((o) => isShopMatchingRecord(o, s));
+      const shopCols = collections.filter((c) => isShopMatchingRecord(c, s));
+      const shopRets = returns.filter((r) => isShopMatchingRecord(r, s));
 
       const totalSales = shopOrders.reduce((sum, o) => sum + (o.grandTotal || o.totalValue || o.subtotal || 0), 0);
-      const totalPaid = shopCols.reduce((sum, c) => sum + (c.amount || 0), 0);
+      
+      // Calculate total paid including standalone collections and direct paid amounts on orders
+      const colRefs = new Set(shopCols.map((c) => String(c.receiptNumber || c.refNo || c.invoiceRef || '').trim()));
+      const directOrderPaid = shopOrders.reduce((sum, o) => {
+        const oRef = String(o.invoiceNo || o.billNo || o.id || '').trim();
+        if (o.paidAmount > 0 && !colRefs.has(oRef)) {
+          return sum + Number(o.paidAmount);
+        }
+        return sum;
+      }, 0);
+      const totalPaid = shopCols.reduce((sum, c) => sum + (c.amount || 0), 0) + directOrderPaid;
       const totalRet = shopRets.reduce((sum, r) => sum + (r.returnValue || r.amount || 0), 0);
 
-      const openingBal = Number(s.openingOutstanding || s.openingBalance || 0);
+      const openingBal = Number(s.openingOutstanding || s.openingReceivable || s.openingBalance || 0);
       const computedOutstanding = Math.max(0, openingBal + totalSales - totalPaid - totalRet);
 
       const lastOrd = shopOrders.sort((a, b) => (b.date || '').localeCompare(a.date || ''))[0];

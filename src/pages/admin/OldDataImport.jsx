@@ -35,6 +35,11 @@ import {
   Plus,
 } from 'lucide-react';
 
+import {
+  isShopMatchingRecord,
+  normalizeShopName,
+} from '../../utils/partyLedgerHelper';
+
 // ============================================================================
 // HELPER UTILITIES: NUMBER, DATE & NORMALIZATION
 // ============================================================================
@@ -87,27 +92,75 @@ const parseDateString = (val) => {
 const normalizeStr = (txt) =>
   String(txt || '')
     .toLowerCase()
+    .replace(/\s*\([^)]*\)/g, ' ')
     .replace(/[^a-z0-9]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 
 // Classify Transaction Type
 const classifyTxnType = (rawType = '', debitVal = 0, creditVal = 0, desc = '') => {
-  const t = String(rawType || '').toLowerCase().trim();
-  const d = String(desc || '').toLowerCase().trim();
+  const t = String(rawType || '').toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim();
+  const d = String(desc || '').toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim();
 
-  if (t.includes('opening') || d.includes('opening balance') || t.includes('open bal')) {
+  // 1. Opening Balance
+  if (
+    t.includes('opening') ||
+    t.includes('open bal') ||
+    t.includes('op bal') ||
+    t.includes('initial') ||
+    d.includes('opening balance') ||
+    d.includes('open bal')
+  ) {
     return 'OPENING';
   }
-  if (t.includes('return') || t.includes('credit note') || t === 'cn' || d.includes('sales return') || d.includes('credit note')) {
+
+  // 2. Returns / Credit Notes
+  if (
+    t.includes('return') ||
+    t.includes('credit note') ||
+    t.includes('cr note') ||
+    t === 'cn' ||
+    t === 'cr' ||
+    d.includes('sales return') ||
+    d.includes('credit note') ||
+    d.includes('return')
+  ) {
     return 'RETURN';
   }
-  if (t.includes('payment') || t.includes('receipt') || t.includes('received') || t.includes('bank') || t.includes('cash in') || (creditVal > 0 && debitVal === 0)) {
+
+  // 3. Payments / Collections
+  if (
+    t.includes('payment') ||
+    t.includes('receipt') ||
+    t.includes('received') ||
+    t.includes('collection') ||
+    t.includes('pay in') ||
+    t.includes('money in') ||
+    t.includes('cash in') ||
+    t.includes('bank') ||
+    t.includes('online') ||
+    t.includes('upi') ||
+    d.includes('payment') ||
+    d.includes('receipt') ||
+    d.includes('received') ||
+    (creditVal > 0 && debitVal === 0)
+  ) {
     return 'COLLECTION';
   }
-  if (t.includes('sale') || t.includes('invoice') || t.includes('bill') || t.includes('tax inv') || (debitVal > 0 && creditVal === 0)) {
+
+  // 4. Sales / Invoices
+  if (
+    t.includes('sale') ||
+    t.includes('invoice') ||
+    t.includes('bill') ||
+    t.includes('tax inv') ||
+    t.includes('order') ||
+    (debitVal > 0 && creditVal === 0)
+  ) {
     return 'SALE';
   }
+
+  // 5. Fallback based on values
   if (debitVal > 0) return 'SALE';
   if (creditVal > 0) return 'COLLECTION';
   return 'OTHER';
@@ -182,6 +235,7 @@ export default function OldDataImport({ onNavigate }) {
   };
 
   // Single-Party / Default Party Context
+  const [selectedTargetShopId, setSelectedTargetShopId] = useState('');
   const [defaultPartyName, setDefaultPartyName] = useState('');
   const [defaultPartyPhone, setDefaultPartyPhone] = useState('');
   const [statementHeaders, setStatementHeaders] = useState([]);
@@ -747,15 +801,26 @@ export default function OldDataImport({ onNavigate }) {
         // 1. Party Registration & Matching
         if (!detectedPartiesMap.has(normPName)) {
           let matchedShop = null;
-          if (rawPhone && existingShopsByPhone.has(rawPhone)) {
+          // Priority 1: User explicitly selected an existing target shop in Wizard Step 2
+          if (selectedTargetShopId) {
+            matchedShop = shops.find((s) => s.id === selectedTargetShopId) || null;
+          }
+          // Priority 2: Exact phone match
+          if (!matchedShop && rawPhone && existingShopsByPhone.has(rawPhone)) {
             matchedShop = existingShopsByPhone.get(rawPhone);
-          } else if (existingShopsByName.has(normPName)) {
+          }
+          // Priority 3: Exact normalized name match
+          if (!matchedShop && existingShopsByName.has(normPName)) {
             matchedShop = existingShopsByName.get(normPName);
+          }
+          // Priority 4: Fuzzy name & token overlap matcher (isShopMatchingRecord)
+          if (!matchedShop) {
+            matchedShop = shops.find((s) => isShopMatchingRecord({ name: rawParty, mobile: rawPhone }, s)) || null;
           }
 
           const partyObj = {
             id: matchedShop ? matchedShop.id : `shop-hist-${Date.now()}-${detectedPartiesMap.size + 1}`,
-            name: rawParty,
+            name: matchedShop ? matchedShop.name : rawParty,
             owner: matchedShop?.owner || rawParty,
             phone: rawPhone || matchedShop?.mobile || '',
             mobile: rawPhone || matchedShop?.mobile || '',
@@ -2064,8 +2129,35 @@ export default function OldDataImport({ onNavigate }) {
                       )}
                     </div>
                     <p className="text-[11px] text-slate-500 font-medium">
-                      If importing a single party's statement (e.g. <em>Aakash Rathore Kirana</em>), verify or enter the customer name below. For multi-party sheets, the party column takes precedence.
+                      If importing a single party's statement (e.g. <em>Aakash Rathore Kirana</em>), you can link it directly to an existing shop in the database, or verify the name below.
                     </p>
+
+                    <div>
+                      <label className="font-bold text-slate-700 block mb-1">
+                        Link to Existing Shop / Customer Profile (Optional)
+                      </label>
+                      <select
+                        value={selectedTargetShopId}
+                        onChange={(e) => {
+                          const sId = e.target.value;
+                          setSelectedTargetShopId(sId);
+                          const chosen = shops.find((s) => s.id === sId);
+                          if (chosen) {
+                            setDefaultPartyName(chosen.name);
+                            if (chosen.mobile) setDefaultPartyPhone(chosen.mobile);
+                          }
+                        }}
+                        className="w-full p-2.5 bg-white border border-slate-300 focus:border-red-600 rounded-xl font-bold text-slate-900 outline-none"
+                      >
+                        <option value="">-- Auto-Match by Name/Phone or Create New --</option>
+                        {shops.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.name} ({s.connectedMarketName || s.marketName || 'Market'}) {s.mobile ? `[${s.mobile}]` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                       <div>
                         <label className="font-bold text-slate-700 block mb-1">Customer / Party Name *</label>

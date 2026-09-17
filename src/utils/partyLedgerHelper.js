@@ -73,6 +73,65 @@ export const getDatePresetRange = (preset) => {
 };
 
 /**
+ * Normalizes text by lowercasing, removing parenthetical notations like (JHALDA),
+ * removing punctuation, and trimming extra spaces.
+ */
+export const normalizeShopName = (txt) => {
+  return String(txt || '')
+    .toLowerCase()
+    .replace(/\s*\([^)]*\)/g, ' ')
+    .replace(/[^a-z0-9]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+};
+
+/**
+ * Robust matcher to check if a transaction/record belongs to a given target shop.
+ * Handles exact ID, exact name, fuzzy token overlap, phone match, etc.
+ */
+export const isShopMatchingRecord = (record, targetShop) => {
+  if (!record || !targetShop) return false;
+
+  // 1. Direct ID match
+  if (record.shopId && targetShop.id && String(record.shopId).trim() === String(targetShop.id).trim()) {
+    return true;
+  }
+
+  // 2. Mobile / Phone match (10 digits)
+  const rPhone = String(record.mobile || record.phone || '').replace(/[^0-9]/g, '');
+  const sPhone = String(targetShop.mobile || targetShop.phone || '').replace(/[^0-9]/g, '');
+  if (rPhone && sPhone && rPhone.length >= 10 && sPhone.length >= 10 && rPhone.slice(-10) === sPhone.slice(-10)) {
+    return true;
+  }
+
+  // 3. Name Normalization & Token Comparison
+  const rName = normalizeShopName(record.shopName || record.partyName || record.name);
+  const sName = normalizeShopName(targetShop.name);
+
+  if (!rName || !sName) return false;
+
+  // 3a. Exact normalized match
+  if (rName === sName) return true;
+
+  // 3b. Substring contains match
+  if (rName.includes(sName) || sName.includes(rName)) return true;
+
+  // 3c. Significant token overlap (e.g. "aakash kirana jhadla" matching "aakash rathore kirana jhadla")
+  const stopWords = new Set(['store', 'stores', 'traders', 'shop', 'centre', 'center', 'and', 'the', 'pvt', 'ltd']);
+  const rTokens = rName.split(' ').filter((w) => w.length >= 3 && !stopWords.has(w));
+  const sTokens = sName.split(' ').filter((w) => w.length >= 3 && !stopWords.has(w));
+
+  if (rTokens.length > 0 && sTokens.length > 0) {
+    const common = rTokens.filter((t) => sTokens.includes(t));
+    // If at least 2 significant tokens match (or 1 token when total is 1)
+    if (common.length >= 2) return true;
+    if (common.length === 1 && (rTokens.length === 1 || sTokens.length === 1)) return true;
+  }
+
+  return false;
+};
+
+/**
  * Calculates unified running ledger for a party/shop
  */
 export const calculatePartyLedger = ({
@@ -95,87 +154,107 @@ export const calculatePartyLedger = ({
     };
   }
 
-  const shopId = shop.id;
-  const shopNorm = (shop.name || '').toLowerCase().trim();
-
   // Baseline opening outstanding from shop master
-  const baselineOpening = Number(shop.openingOutstanding || shop.openingBalance || 0);
+  const baselineOpening = Number(shop.openingOutstanding || shop.openingReceivable || shop.openingBalance || 0);
 
-  // 1. Gather all raw orders for this shop
-  const shopOrders = orders
-    .filter((o) => o.shopId === shopId || (o.shopName && o.shopName.toLowerCase().trim() === shopNorm))
-    .map((o) => {
-      const dateStr = o.date || o.createdDate || '';
-      const isoDate = parseDateToComparable(dateStr);
-      const amount = Number(o.grandTotal || o.totalValue || o.subtotal || 0);
-      return {
-        id: o.id || `ord-${Math.random()}`,
-        type: 'SALE',
-        particular: 'Sale / Invoice',
-        date: dateStr,
-        isoDate,
-        refNo: o.invoiceNo || o.invoiceRef || o.id,
-        debit: amount,
-        credit: 0,
-        amount,
-        itemsCount: o.items?.length || 1,
-        totalKg: o.totalKg || 0,
-        raw: o,
-      };
-    });
+  // 1. Gather all raw orders for this shop using robust fuzzy matcher
+  const matchedOrders = orders.filter((o) => isShopMatchingRecord(o, shop));
+  const shopOrders = matchedOrders.map((o) => {
+    const dateStr = o.date || o.createdDate || '';
+    const isoDate = parseDateToComparable(dateStr);
+    const amount = Number(o.grandTotal || o.totalValue || o.subtotal || 0);
+    const paidAmount = Number(o.paidAmount || 0);
+    return {
+      id: o.id || `ord-${Math.random()}`,
+      type: 'SALE',
+      particular: 'Sale / Invoice',
+      date: dateStr,
+      isoDate,
+      refNo: o.invoiceNo || o.invoiceRef || o.billNo || o.id,
+      debit: amount,
+      credit: 0,
+      amount,
+      paidAmount,
+      itemsCount: o.items?.length || 1,
+      totalKg: o.totalKg || 0,
+      raw: o,
+    };
+  });
 
-  // 2. Gather all collections for this shop
-  const shopCollections = collections
-    .filter((c) => c.shopId === shopId || (c.shopName && c.shopName.toLowerCase().trim() === shopNorm))
-    .map((c) => {
-      const dateStr = c.date || c.createdDate || '';
-      const isoDate = parseDateToComparable(dateStr);
-      const amount = Number(c.amount || 0);
-      return {
-        id: c.id || `col-${Math.random()}`,
-        type: 'PAYMENT',
-        particular: c.source === 'OLD IMPORT'
+  // 2. Gather all collections for this shop using robust fuzzy matcher
+  const matchedCollections = collections.filter((c) => isShopMatchingRecord(c, shop));
+  const shopCollections = matchedCollections.map((c) => {
+    const dateStr = c.date || c.createdDate || '';
+    const isoDate = parseDateToComparable(dateStr);
+    const amount = Number(c.amount || 0);
+    return {
+      id: c.id || `col-${Math.random()}`,
+      type: 'PAYMENT',
+      particular:
+        c.source === 'OLD IMPORT' || c.source === 'OLD_IMPORT'
           ? `Payment-In (${c.paymentMode || 'Old Collection'})`
           : `Payment Received (${c.paymentMode || 'Cash'})`,
-        date: dateStr,
-        isoDate,
-        refNo: c.receiptNumber || c.invoiceRef || c.id,
-        debit: 0,
-        credit: amount,
-        amount,
-        paymentMode: c.paymentMode || 'Cash',
-        slipUrl: c.slipUrl || c.photoUrl || null,
-        raw: c,
-      };
-    });
+      date: dateStr,
+      isoDate,
+      refNo: c.receiptNumber || c.refNo || c.invoiceRef || c.id,
+      debit: 0,
+      credit: amount,
+      amount,
+      paymentMode: c.paymentMode || 'Cash',
+      slipUrl: c.slipUrl || c.photoUrl || null,
+      raw: c,
+    };
+  });
 
-  // 3. Gather all returns for this shop
-  const shopReturns = returns
-    .filter((r) => r.shopId === shopId || (r.shopName && r.shopName.toLowerCase().trim() === shopNorm))
-    .map((r) => {
-      const dateStr = r.date || r.createdDate || '';
-      const isoDate = parseDateToComparable(dateStr);
-      const amount = Number(r.returnValue || r.amount || 0);
-      return {
-        id: r.id || `ret-${Math.random()}`,
-        type: 'RETURN',
-        particular: `Sales Return (${r.productName || 'Goods'})`,
-        date: dateStr,
-        isoDate,
-        refNo: r.invoiceNo || r.invoiceRef || r.id,
-        debit: 0,
-        credit: amount,
-        amount,
-        quantityKg: r.quantityKg || 1,
-        reason: r.reason || 'Damage/Expiries',
-        raw: r,
-      };
-    });
+  // 3. Check for orders that had direct cash/advance payment recorded on bill (paidAmount > 0)
+  // and ensure they are represented as payments if no standalone collection was created for them.
+  const standaloneColRefs = new Set(shopCollections.map((c) => String(c.refNo).trim()));
+  const directOrderPayments = [];
 
-  // Combine and sort chronologically (oldest first for ledger sequence)
-  const allChronological = [...shopOrders, ...shopCollections, ...shopReturns].sort((a, b) => {
+  shopOrders.forEach((o) => {
+    if (o.paidAmount > 0 && !standaloneColRefs.has(String(o.refNo).trim())) {
+      directOrderPayments.push({
+        id: `ord-pay-${o.id}`,
+        type: 'PAYMENT',
+        particular: `Payment Received on Bill #${o.refNo}`,
+        date: o.date,
+        isoDate: o.isoDate,
+        refNo: o.refNo,
+        debit: 0,
+        credit: o.paidAmount,
+        amount: o.paidAmount,
+        paymentMode: 'Cash / Direct',
+        raw: o.raw,
+        isOrderPayment: true,
+      });
+    }
+  });
+
+  // 4. Gather all returns for this shop using robust fuzzy matcher
+  const matchedReturns = returns.filter((r) => isShopMatchingRecord(r, shop));
+  const shopReturns = matchedReturns.map((r) => {
+    const dateStr = r.date || r.createdDate || '';
+    const isoDate = parseDateToComparable(dateStr);
+    const amount = Number(r.returnValue || r.amount || 0);
+    return {
+      id: r.id || `ret-${Math.random()}`,
+      type: 'RETURN',
+      particular: `Sales Return (${r.productName || 'Goods'})`,
+      date: dateStr,
+      isoDate,
+      refNo: r.invoiceNo || r.invoiceRef || r.id,
+      debit: 0,
+      credit: amount,
+      amount,
+      quantityKg: r.quantityKg || 1,
+      reason: r.reason || 'Damage/Expiries',
+      raw: r,
+    };
+  });
+
+  // Combine and sort chronologically (oldest first for running ledger)
+  const allChronological = [...shopOrders, ...shopCollections, ...directOrderPayments, ...shopReturns].sort((a, b) => {
     if (a.isoDate === b.isoDate) {
-      // Prioritize Sales before Collections on same date
       if (a.type === 'SALE' && b.type !== 'SALE') return -1;
       if (a.type !== 'SALE' && b.type === 'SALE') return 1;
       return 0;
@@ -228,7 +307,7 @@ export const calculatePartyLedger = ({
   // Determine payment status
   let paymentStatus = 'Paid';
   if (closingBalance > 0) {
-    const hasPayments = totalCollections > 0 || shopCollections.length > 0;
+    const hasPayments = totalCollections > 0 || shopCollections.length > 0 || directOrderPayments.length > 0;
     paymentStatus = hasPayments ? 'Partially Paid' : 'Outstanding';
   }
 
