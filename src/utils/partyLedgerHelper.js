@@ -116,16 +116,27 @@ export const isShopMatchingRecord = (record, targetShop) => {
   // 3b. Substring contains match
   if (rName.includes(sName) || sName.includes(rName)) return true;
 
-  // 3c. Significant token overlap (e.g. "aakash kirana jhadla" matching "aakash rathore kirana jhadla")
-  const stopWords = new Set(['store', 'stores', 'traders', 'shop', 'centre', 'center', 'and', 'the', 'pvt', 'ltd']);
+  // 3c. Significant token overlap (excluding generic business terms and market/town names)
+  const stopWords = new Set([
+    'store', 'stores', 'traders', 'shop', 'centre', 'center', 'mart', 'provision', 'general', 'super', 'kirana',
+    'and', 'the', 'pvt', 'ltd', 'enterprise', 'enterprises', 'agency', 'agencies', 'co', 'company', 'spices',
+    'jhadla', 'jhalda', 'akodia', 'akodiya', 'pachore', 'ashta', 'kalapipal', 'shujalpur', 'sarangpur', 'biaora',
+    'indore', 'ujjain', 'sehore', 'dewas', 'gulana', 'chakrod', 'jamner', 'bolai', 'tarana', 'shajapur',
+    'mandi', 'road', 'market', 'nagar', 'colony', 'city', 'freegang', 'stand', 'bus', 'square', 'jod',
+    'kheda', 'khedi', 'kalan', 'khurd', 'bazar', 'bazaar'
+  ]);
   const rTokens = rName.split(' ').filter((w) => w.length >= 3 && !stopWords.has(w));
   const sTokens = sName.split(' ').filter((w) => w.length >= 3 && !stopWords.has(w));
 
   if (rTokens.length > 0 && sTokens.length > 0) {
     const common = rTokens.filter((t) => sTokens.includes(t));
-    // If at least 2 significant tokens match (or 1 token when total is 1)
-    if (common.length >= 2) return true;
-    if (common.length === 1 && (rTokens.length === 1 || sTokens.length === 1)) return true;
+    // If the primary distinct name matches (e.g. "aakash" or "rathore")
+    if (common.length >= 1) {
+      // If either has only 1 distinct token, it must match
+      if (rTokens.length === 1 || sTokens.length === 1) return true;
+      // If multiple distinct tokens exist, require at least half to match
+      if (common.length >= Math.min(rTokens.length, sTokens.length) / 2) return true;
+    }
   }
 
   return false;

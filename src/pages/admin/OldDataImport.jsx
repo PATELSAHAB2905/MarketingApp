@@ -566,26 +566,21 @@ export default function OldDataImport({ onNavigate }) {
   const autoMapStatementColumns = (sheetRows = []) => {
     if (!sheetRows || sheetRows.length === 0) return;
 
-    // Scan up to first 25 rows for header row
+    // Scan up to first 35 rows for actual table header row (must match at least 2 distinct column concepts)
     let headerIdx = 0;
-    for (let i = 0; i < Math.min(25, sheetRows.length); i++) {
+    for (let i = 0; i < Math.min(35, sheetRows.length); i++) {
       const row = (sheetRows[i] || []).map((c) =>
         String(c).toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim()
       );
-      if (
-        row.some(
-          (c) =>
-            c.includes('date') ||
-            c.includes('txn type') ||
-            c.includes('ref no') ||
-            c.includes('invoice') ||
-            c.includes('bill') ||
-            c.includes('total') ||
-            c.includes('received') ||
-            c.includes('balance') ||
-            c.includes('party')
-        )
-      ) {
+      let matches = 0;
+      if (row.some((c) => c === 'date' || c.includes('date') || c === 'dt')) matches++;
+      if (row.some((c) => c.includes('type') || c.includes('particular') || c.includes('voucher') || c.includes('vch'))) matches++;
+      if (row.some((c) => c.includes('ref') || c.includes('invoice') || c.includes('bill') || c.includes('doc'))) matches++;
+      if (row.some((c) => c.includes('total') || c.includes('amount') || c.includes('debit') || c.includes('income'))) matches++;
+      if (row.some((c) => c.includes('received') || c.includes('paid') || c.includes('credit') || c.includes('payment'))) matches++;
+      if (row.some((c) => c.includes('balance') || c.includes('receivable') || c.includes('payable'))) matches++;
+
+      if (matches >= 2) {
         headerIdx = i;
         break;
       }
@@ -614,9 +609,9 @@ export default function OldDataImport({ onNavigate }) {
       partyName: findCol(['party name', 'party', 'customer name', 'shop name', 'account name', 'customer', 'account']),
       phone: findCol(['party contact', 'phone', 'mobile', 'contact', 'tel']),
       email: findCol(['email', 'mail']),
-      totalAmount: findCol(['total income', 'total amount', 'total', 'debit', 'sale amount', 'invoice amount', 'amount', 'net total', 'income']),
-      received: findCol(['received paid', 'received', 'paid', 'credit', 'payment', 'collection', 'payment in', 'amount received', 'money in']),
-      receivableBalance: findCol(['receivable balance', 'receivable', 'closing balance', 'balance', 'running balance', 'net balance']),
+      totalAmount: findCol(['total', 'total amount', 'total income', 'total rs', 'debit', 'sale amount', 'invoice amount', 'amount', 'net total', 'income']),
+      received: findCol(['received paid', 'received / paid', 'received/paid', 'received', 'paid', 'credit', 'payment', 'collection', 'payment in', 'amount received', 'money in']),
+      receivableBalance: findCol(['receivable balance', 'receivable', 'closing balance', 'balance', 'running balance', 'net balance', 'txn balance']),
       payableBalance: findCol(['payable balance', 'payable']),
       paymentType: findCol(['payment type', 'payment mode', 'mode', 'pay mode', 'payment method']),
       paymentRef: findCol(['payment reference', 'ref no', 'cheque no', 'utr', 'transaction id', 'chq no']),
@@ -629,22 +624,19 @@ export default function OldDataImport({ onNavigate }) {
     if (!sheetRows || sheetRows.length === 0) return;
 
     let headerIdx = 0;
-    for (let i = 0; i < Math.min(25, sheetRows.length); i++) {
+    for (let i = 0; i < Math.min(35, sheetRows.length); i++) {
       const row = (sheetRows[i] || []).map((c) =>
         String(c).toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim()
       );
-      if (
-        row.some(
-          (c) =>
-            c.includes('item') ||
-            c.includes('product') ||
-            c.includes('qty') ||
-            c.includes('quantity') ||
-            c.includes('rate') ||
-            c.includes('price') ||
-            c.includes('amount')
-        )
-      ) {
+      let matches = 0;
+      if (row.some((c) => c === 'date' || c.includes('date'))) matches++;
+      if (row.some((c) => c.includes('item') || c.includes('product') || c.includes('description') || c.includes('particular'))) matches++;
+      if (row.some((c) => c.includes('qty') || c.includes('quantity') || c.includes('weight') || c.includes('kg'))) matches++;
+      if (row.some((c) => c.includes('rate') || c.includes('price'))) matches++;
+      if (row.some((c) => c.includes('amount') || c.includes('total') || c.includes('value'))) matches++;
+      if (row.some((c) => c.includes('invoice') || c.includes('bill') || c.includes('ref'))) matches++;
+
+      if (matches >= 2) {
         headerIdx = i;
         break;
       }
@@ -784,22 +776,19 @@ export default function OldDataImport({ onNavigate }) {
 
       // --- B. Process Party Statement Report Sheet ---
       let stmtHeaderIdx = 0;
-      for (let i = 0; i < Math.min(25, stmtRows.length); i++) {
+      for (let i = 0; i < Math.min(35, stmtRows.length); i++) {
         const row = (stmtRows[i] || []).map((c) =>
           String(c).toLowerCase().replace(/[^a-z0-9]/g, ' ').replace(/\s+/g, ' ').trim()
         );
-        if (
-          row.some(
-            (c) =>
-              c.includes('party') ||
-              c.includes('date') ||
-              c.includes('txn type') ||
-              c.includes('amount') ||
-              c.includes('balance') ||
-              c.includes('total') ||
-              c.includes('received')
-          )
-        ) {
+        let matches = 0;
+        if (row.some((c) => c === 'date' || c.includes('date') || c === 'dt')) matches++;
+        if (row.some((c) => c.includes('type') || c.includes('particular') || c.includes('voucher') || c.includes('vch'))) matches++;
+        if (row.some((c) => c.includes('ref') || c.includes('invoice') || c.includes('bill') || c.includes('doc'))) matches++;
+        if (row.some((c) => c.includes('total') || c.includes('amount') || c.includes('debit') || c.includes('income'))) matches++;
+        if (row.some((c) => c.includes('received') || c.includes('paid') || c.includes('credit') || c.includes('payment'))) matches++;
+        if (row.some((c) => c.includes('balance') || c.includes('receivable') || c.includes('payable'))) matches++;
+
+        if (matches >= 2) {
           stmtHeaderIdx = i;
           break;
         }

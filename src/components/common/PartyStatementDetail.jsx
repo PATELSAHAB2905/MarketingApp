@@ -183,10 +183,12 @@ export default function PartyStatementDetail({
       }
       return true;
     }).sort((a, b) => {
+      const aIso = a.isoDate || parseDateToComparable(a.date) || '';
+      const bIso = b.isoDate || parseDateToComparable(b.date) || '';
       if (sortOrder === 'DESC') {
-        return (b.dateIso || b.date || '').localeCompare(a.dateIso || a.date || '');
+        return bIso.localeCompare(aIso);
       }
-      return (a.dateIso || a.date || '').localeCompare(b.dateIso || b.date || '');
+      return aIso.localeCompare(bIso);
     });
   }, [ledgerData, txnTypeFilter, txnSearchQuery, sortOrder]);
 
