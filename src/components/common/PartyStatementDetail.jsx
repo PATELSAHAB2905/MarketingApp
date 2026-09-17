@@ -1053,7 +1053,7 @@ Thank you for your business!`;
                     value={editName}
                     onChange={(e) => setEditName(e.target.value)}
                     className="w-full border border-slate-200 rounded-xl p-2.5 font-bold focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="e.g., Aakash Rathore Kirana Jhadla"
+                    placeholder="e.g., Mahavir Kirana Store"
                   />
                   <p className="text-[10px] text-slate-400 mt-1">Renaming this party will automatically synchronize all associated sales, receipts, and returns.</p>
                 </div>

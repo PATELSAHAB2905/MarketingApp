@@ -2196,7 +2196,7 @@ export default function OldDataImport({ onNavigate }) {
                       )}
                     </div>
                     <p className="text-[11px] text-slate-500 font-medium">
-                      If importing a single party's statement (e.g. <em>Aakash Rathore Kirana</em>), you can link it directly to an existing shop in the database, or verify the name below.
+                      If importing a single party's statement (e.g. <em>Sawariya Kirana</em>), you can link it directly to an existing shop in the database, or verify the name below.
                     </p>
 
                     <div>
@@ -2230,7 +2230,7 @@ export default function OldDataImport({ onNavigate }) {
                         <label className="font-bold text-slate-700 block mb-1">Customer / Party Name *</label>
                         <input
                           type="text"
-                          placeholder="e.g. Aakash Rathore Kirana Jhadla"
+                          placeholder="e.g. Sawariya Kirana Store"
                           value={defaultPartyName}
                           onChange={(e) => setDefaultPartyName(e.target.value)}
                           className="w-full p-2.5 bg-white border border-slate-300 focus:border-red-600 rounded-xl font-bold text-slate-900 outline-none"
@@ -2655,7 +2655,7 @@ export default function OldDataImport({ onNavigate }) {
                     value={editPartyName}
                     onChange={(e) => setEditPartyName(e.target.value)}
                     className="w-full border border-slate-200 rounded-xl p-2.5 font-bold focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="e.g., Aakash Rathore Kirana Jhadla"
+                    placeholder="e.g., Mahavir Kirana Store"
                   />
                   <p className="text-[10px] text-slate-400 mt-1">Renaming this party will automatically cascade to all historical bills and payment receipts.</p>
                 </div>
