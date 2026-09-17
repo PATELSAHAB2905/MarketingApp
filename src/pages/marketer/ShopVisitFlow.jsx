@@ -30,7 +30,7 @@ export default function ShopVisitFlow({
   onOpenFollowup,
 }) {
   const { currentUser } = useAuth();
-  const { getFormattedDate, getFormattedTime, getTodayMarket, addShopVisit, isMarketerDayActive } = useData();
+  const { getFormattedDate, getFormattedTime, getTodayMarket, addShopVisit, isMarketerDayActive, getShopOutstanding } = useData();
 
   const [visitStarted, setVisitStarted] = useState(false);
   const [visitTime, setVisitTime] = useState(null);
@@ -199,9 +199,14 @@ export default function ShopVisitFlow({
           <div className="grid grid-cols-3 gap-2 text-xs bg-slate-50 p-3 rounded-2xl border border-slate-200">
             <div>
               <span className="text-slate-400 block text-[10px] uppercase font-bold">Outstanding</span>
-              <span className={`font-extrabold text-sm ${shop.outstanding > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
-                ₹{(shop.outstanding || 0).toLocaleString('en-IN')}
-              </span>
+              {(() => {
+                const shopDue = getShopOutstanding ? getShopOutstanding(shop) : (shop.outstanding || 0);
+                return (
+                  <span className={`font-extrabold text-sm ${shopDue > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                    ₹{shopDue.toLocaleString('en-IN')}
+                  </span>
+                );
+              })()}
             </div>
             <div>
               <span className="text-slate-400 block text-[10px] uppercase font-bold">Last Order</span>

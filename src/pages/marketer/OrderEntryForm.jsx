@@ -7,7 +7,7 @@ import { ArrowLeft, Plus, Trash2, ShoppingBag, X, CheckCircle2, History, AlertTr
 
 export default function OrderEntryForm({ shop, editingOrder, onClose, onOrderSubmitted }) {
   const { currentUser } = useAuth();
-  const { products, shops, orders, gstConfig, getFormattedDate, getFormattedTime, getTodayMarket, marketRoutes, addOrder, updateOrder, updateOrderSyncStatus, isMarketerDayActive } = useData();
+  const { products, shops, orders, gstConfig, getFormattedDate, getFormattedTime, getTodayMarket, marketRoutes, addOrder, updateOrder, updateOrderSyncStatus, isMarketerDayActive, getShopOutstanding } = useData();
 
   const [selectedShopId, setSelectedShopId] = useState(
     editingOrder ? editingOrder.shopId : (shop ? shop.id : (shops[0]?.id || ''))
@@ -320,17 +320,20 @@ export default function OrderEntryForm({ shop, editingOrder, onClose, onOrderSub
           <div className="space-y-1.5">
             <div className="flex justify-between items-center">
               <label className="block text-[11px] font-black text-slate-700 uppercase">Target Shop *</label>
-              {targetShop && (
-                <span
-                  className={`text-xs font-black px-2 py-0.5 rounded-full ${
-                    (targetShop.outstanding || 0) > 0
-                      ? 'bg-red-100 text-red-800'
-                      : 'bg-emerald-100 text-emerald-800'
-                  }`}
-                >
-                  Due: ₹{(targetShop.outstanding || 0).toLocaleString('en-IN')}{(targetShop.outstanding || 0) <= 0 ? ' — No Due' : ''}
-                </span>
-              )}
+              {targetShop && (() => {
+                const targetDue = getShopOutstanding ? getShopOutstanding(targetShop) : (targetShop.outstanding || 0);
+                return (
+                  <span
+                    className={`text-xs font-black px-2 py-0.5 rounded-full ${
+                      targetDue > 0
+                        ? 'bg-red-100 text-red-800'
+                        : 'bg-emerald-100 text-emerald-800'
+                    }`}
+                  >
+                    Due: ₹{targetDue.toLocaleString('en-IN')}{targetDue <= 0 ? ' — No Due' : ''}
+                  </span>
+                );
+              })()}
             </div>
 
             <div className="relative">
@@ -352,11 +355,14 @@ export default function OrderEntryForm({ shop, editingOrder, onClose, onOrderSub
               }}
               className="w-full bg-slate-50 border border-slate-300 rounded-xl py-2 px-3 text-xs font-bold text-slate-900 outline-none"
             >
-              {searchedShops.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name} • {s.connectedMarketName || s.marketName || 'Pachore'} • Due: ₹{(s.outstanding || 0).toLocaleString('en-IN')}{(s.outstanding || 0) <= 0 ? ' (No Due)' : ''}
-                </option>
-              ))}
+              {searchedShops.map((s) => {
+                const sDue = getShopOutstanding ? getShopOutstanding(s) : (s.outstanding || 0);
+                return (
+                  <option key={s.id} value={s.id}>
+                    {s.name} • {s.connectedMarketName || s.marketName || 'Pachore'} • Due: ₹{sDue.toLocaleString('en-IN')}{sDue <= 0 ? ' (No Due)' : ''}
+                  </option>
+                );
+              })}
             </select>
           </div>
 

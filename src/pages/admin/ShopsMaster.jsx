@@ -5,7 +5,7 @@ import ShopHistoryModal from '../../components/common/ShopHistoryModal';
 import { Store, Search, Plus, MapPin, IndianRupee, ChevronDown, FileText, Edit, Trash2, X, AlertTriangle } from 'lucide-react';
 
 export default function ShopsMaster() {
-  const { shops, markets, marketRoutes, connectedMarkets, addNewShop, updateShop, deleteShop } = useData();
+  const { shops, markets, marketRoutes, connectedMarkets, addNewShop, updateShop, deleteShop, getShopOutstanding } = useData();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedMarket, setSelectedMarket] = useState('ALL');
@@ -293,9 +293,14 @@ export default function ShopsMaster() {
             <div className="grid grid-cols-2 gap-2 text-xs pt-2 border-t border-slate-100">
               <div className="bg-slate-50 p-2 rounded-xl">
                 <span className="text-slate-400 block text-[10px] uppercase font-bold">Outstanding</span>
-                <span className={`font-black ${shop.outstanding > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
-                  ₹{(shop.outstanding || 0).toLocaleString('en-IN')}
-                </span>
+                {(() => {
+                  const shopDue = getShopOutstanding ? getShopOutstanding(shop) : (shop.outstanding || 0);
+                  return (
+                    <span className={`font-black ${shopDue > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                      ₹{shopDue.toLocaleString('en-IN')}
+                    </span>
+                  );
+                })()}
               </div>
               <div className="bg-slate-50 p-2 rounded-xl">
                 <span className="text-slate-400 block text-[10px] uppercase font-bold">Last Order</span>

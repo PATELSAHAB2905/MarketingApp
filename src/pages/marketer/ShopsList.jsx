@@ -22,7 +22,7 @@ import {
 
 export default function ShopsList({ onSelectShop, onAddNewShop, onGoHome }) {
   const { currentUser } = useAuth();
-  const { getFormattedDate, getTodayMarket, getAuthorizedShops, connectedMarkets } = useData();
+  const { getFormattedDate, getTodayMarket, getAuthorizedShops, connectedMarkets, getShopOutstanding } = useData();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCm, setSelectedCm] = useState('ALL');
   const [historyShop, setHistoryShop] = useState(null);
@@ -246,9 +246,14 @@ export default function ShopsList({ onSelectShop, onAddNewShop, onGoHome }) {
                 </div>
                 <div>
                   <span className="text-slate-400 block text-[10px] uppercase font-bold">Outstanding</span>
-                  <span className={`font-bold ${shop.outstanding > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
-                    ₹{(shop.outstanding || 0).toLocaleString('en-IN')}
-                  </span>
+                  {(() => {
+                    const shopDue = getShopOutstanding ? getShopOutstanding(shop) : (shop.outstanding || 0);
+                    return (
+                      <span className={`font-bold ${shopDue > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                        ₹{shopDue.toLocaleString('en-IN')}
+                      </span>
+                    );
+                  })()}
                 </div>
                 <div>
                   <span className="text-slate-400 block text-[10px] uppercase font-bold">Last Visit</span>

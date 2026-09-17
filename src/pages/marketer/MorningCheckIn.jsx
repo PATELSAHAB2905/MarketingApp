@@ -6,7 +6,7 @@ import { CheckCircle2, MapPin, Clock, Calendar, Store, Target, IndianRupee, Hist
 
 export default function MorningCheckIn({ onClose }) {
   const { currentUser } = useAuth();
-  const { getFormattedDate, getFormattedTime, getTodayMarket, getAuthorizedShops, addCheckIn, targets, checkIns = [] } = useData();
+  const { getFormattedDate, getFormattedTime, getTodayMarket, getAuthorizedShops, addCheckIn, targets, checkIns = [], getShopOutstanding } = useData();
 
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
@@ -31,9 +31,15 @@ export default function MorningCheckIn({ onClose }) {
     dailyNewCustomers: 3,
   };
 
-  // Mock pending stats for this market
-  const pendingCollectionShops = authorizedShops.filter(s => s.outstanding > 0);
-  const totalPendingAmount = pendingCollectionShops.reduce((sum, s) => sum + (s.outstanding || 0), 0);
+  // Pending stats for this market
+  const pendingCollectionShops = authorizedShops.filter(s => {
+    const due = getShopOutstanding ? getShopOutstanding(s) : (s.outstanding || 0);
+    return due > 0;
+  });
+  const totalPendingAmount = pendingCollectionShops.reduce((sum, s) => {
+    const due = getShopOutstanding ? getShopOutstanding(s) : (s.outstanding || 0);
+    return sum + due;
+  }, 0);
 
   const handleStartDay = () => {
     setLoading(true);

@@ -23,7 +23,7 @@ import {
   fetchAllDataFromFirebase,
   COLLECTIONS,
 } from '../services/syncService';
-import { isShopMatchingRecord } from '../utils/partyLedgerHelper';
+import { isShopMatchingRecord, calculatePartyLedger } from '../utils/partyLedgerHelper';
 
 const DataContext = createContext();
 
@@ -489,6 +489,15 @@ export const DataProvider = ({ children }) => {
 
     // Fallback: return all shops
     return shops;
+  };
+
+  // getShopOutstanding: Computes exact live ledger balance matching Party Statement report
+  const getShopOutstanding = (shopOrId) => {
+    if (!shopOrId) return 0;
+    const s = typeof shopOrId === 'string' ? shops.find(x => x.id === shopOrId) : shopOrId;
+    if (!s) return 0;
+    const ledger = calculatePartyLedger(s, orders, collections, returns);
+    return ledger.closingBalance;
   };
 
   // ======= MARKET ROUTE CRUD =======
@@ -2258,6 +2267,7 @@ export const DataProvider = ({ children }) => {
         getDayOfWeekName,
         getTodayMarket,
         getAuthorizedShops,
+        getShopOutstanding,
         getActiveTarget,
         products, setProducts,
         masterMarketGroups, setMasterMarketGroups,

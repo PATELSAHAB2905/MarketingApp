@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 
 export default function MarketsMaster() {
-  const { markets, setMarkets, addMarket, marketers, shops, assignMarketToMarketer } = useData();
+  const { markets, setMarkets, addMarket, marketers, shops, assignMarketToMarketer, getShopOutstanding } = useData();
   const [showModal, setShowModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -140,7 +140,10 @@ export default function MarketsMaster() {
               (s.connectedMarketName && s.connectedMarketName.toLowerCase().trim() === mNorm)
           );
           const totalParties = marketShops.length;
-          const totalDue = marketShops.reduce((sum, s) => sum + Number(s.outstanding || 0), 0);
+          const totalDue = marketShops.reduce((sum, s) => {
+            const due = getShopOutstanding ? getShopOutstanding(s) : (s.outstanding || 0);
+            return sum + Number(due || 0);
+          }, 0);
 
           return (
             <div

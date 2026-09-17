@@ -21,15 +21,16 @@ import { uploadCollectionSlipPhoto } from '../../services/photoStorageService';
 
 export default function CollectionForm({ shop, editingCollection, onClose, onCollectionSubmitted }) {
   const { currentUser } = useAuth();
-  const { shops, creditPolicy, getFormattedDate, getFormattedTime, getTodayMarket, addCollection, updateCollection, isMarketerDayActive } = useData();
+  const { shops, creditPolicy, getFormattedDate, getFormattedTime, getTodayMarket, addCollection, updateCollection, isMarketerDayActive, getShopOutstanding } = useData();
 
   const [selectedShopId, setSelectedShopId] = useState(
     editingCollection ? editingCollection.shopId : (shop ? shop.id : (shops[0]?.id || ''))
   );
   const targetShop = shops.find((s) => s.id === selectedShopId) || shop || shops[0];
+  const targetDue = getShopOutstanding ? getShopOutstanding(targetShop) : (targetShop?.outstanding || 0);
 
   const [amount, setAmount] = useState(
-    editingCollection ? editingCollection.amount : (targetShop?.outstanding || 5000)
+    editingCollection ? editingCollection.amount : (targetDue || 5000)
   );
   const [paymentMode, setPaymentMode] = useState(editingCollection?.paymentMode || 'Cash');
   const [invoiceRef, setInvoiceRef] = useState(
@@ -59,7 +60,7 @@ export default function CollectionForm({ shop, editingCollection, onClose, onCol
 
   const paymentModes = ['Cash', 'UPI', 'Bank Transfer', 'Cheque', 'Other'];
 
-  const previousOutstanding = targetShop?.outstanding || 0;
+  const previousOutstanding = targetDue;
   const remainingOutstanding = Math.max(0, previousOutstanding - (Number(amount) || 0));
 
   // 21-Day Payment Credit Policy Status (Rule 11)
@@ -230,15 +231,21 @@ export default function CollectionForm({ shop, editingCollection, onClose, onCol
                 const sid = e.target.value;
                 setSelectedShopId(sid);
                 const s = shops.find((sh) => sh.id === sid);
-                if (s) setAmount(s.outstanding || 5000);
+                if (s) {
+                  const sDue = getShopOutstanding ? getShopOutstanding(s) : (s.outstanding || 5000);
+                  setAmount(sDue || 5000);
+                }
               }}
               className="w-full bg-slate-50 border border-slate-200 rounded-xl py-2.5 px-3 text-sm font-bold text-slate-800"
             >
-              {shops.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.name} (Due: ₹{(s.outstanding || 0).toLocaleString('en-IN')})
-                </option>
-              ))}
+              {shops.map((s) => {
+                const sDue = getShopOutstanding ? getShopOutstanding(s) : (s.outstanding || 0);
+                return (
+                  <option key={s.id} value={s.id}>
+                    {s.name} (Due: ₹{sDue.toLocaleString('en-IN')})
+                  </option>
+                );
+              })}
             </select>
           </div>
 
