@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { useData } from '../../context/DataContext';
 import { useAuth } from '../../context/AuthContext';
 import * as XLSX from 'xlsx';
@@ -379,6 +379,94 @@ export default function OldDataImport({ onNavigate }) {
     return returns.filter((r) => r.source === 'OLD_IMPORT' || r.source === 'OLD IMPORT' || r.dataSource === 'OLD IMPORT' || r.isHistorical);
   }, [returns]);
 
+  // Multi-Selection State for Bulk Deletions
+  const [selectedRowIds, setSelectedRowIds] = useState(new Set());
+
+  // Clear selection on tab or filter change
+  useEffect(() => {
+    setSelectedRowIds(new Set());
+  }, [activeTab, filterMarket, searchQuery]);
+
+  const handleToggleSelectRow = (id) => {
+    setSelectedRowIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleSelectAllRows = (itemsList = []) => {
+    setSelectedRowIds((prev) => {
+      const allSelected = itemsList.length > 0 && itemsList.every((it) => prev.has(it.id));
+      if (allSelected) {
+        return new Set();
+      }
+      return new Set(itemsList.map((it) => it.id));
+    });
+  };
+
+  const handleClearSelection = () => {
+    setSelectedRowIds(new Set());
+  };
+
+  const handleDeleteSelected = () => {
+    if (selectedRowIds.size === 0) return;
+    const count = selectedRowIds.size;
+    if (!window.confirm(`Are you sure you want to permanently delete ${count} selected records?`)) return;
+
+    if (activeTab === 'parties') {
+      const targetShops = historicalShops.filter((s) => selectedRowIds.has(s.id));
+      targetShops.forEach((s) => deleteShop(s, true));
+    } else if (activeTab === 'sales') {
+      selectedRowIds.forEach((id) => deleteOrder(id));
+    } else if (activeTab === 'items') {
+      const selectedItems = historicalSaleItems.filter((it) => selectedRowIds.has(it.id));
+      const orderIds = new Set(selectedItems.map((it) => it.orderId));
+      orderIds.forEach((ordId) => deleteOrder(ordId));
+    } else if (activeTab === 'collections') {
+      selectedRowIds.forEach((id) => deleteCollection(id));
+    } else if (activeTab === 'returns') {
+      selectedRowIds.forEach((id) => deleteReturn(id));
+    }
+
+    setSelectedRowIds(new Set());
+  };
+
+  const handleDeleteAllFiltered = () => {
+    let currentListCount = 0;
+    if (activeTab === 'parties') currentListCount = filteredShopsList.length;
+    else if (activeTab === 'sales') currentListCount = filteredOrdersList.length;
+    else if (activeTab === 'items') currentListCount = filteredItemsList.length;
+    else if (activeTab === 'collections') currentListCount = filteredCollectionsList.length;
+    else if (activeTab === 'returns') currentListCount = filteredReturnsList.length;
+
+    if (currentListCount === 0) return;
+
+    if (
+      !window.confirm(
+        `Are you sure you want to PERMANENTLY DELETE ALL ${currentListCount} records matching the current filter? This action cannot be undone.`
+      )
+    ) {
+      return;
+    }
+
+    if (activeTab === 'parties') {
+      filteredShopsList.forEach((s) => deleteShop(s, true));
+    } else if (activeTab === 'sales') {
+      filteredOrdersList.forEach((o) => deleteOrder(o.id));
+    } else if (activeTab === 'items') {
+      const orderIds = new Set(filteredItemsList.map((it) => it.orderId));
+      orderIds.forEach((ordId) => deleteOrder(ordId));
+    } else if (activeTab === 'collections') {
+      filteredCollectionsList.forEach((c) => deleteCollection(c.id));
+    } else if (activeTab === 'returns') {
+      filteredReturnsList.forEach((r) => deleteReturn(r.id));
+    }
+
+    setSelectedRowIds(new Set());
+  };
+
   // Flattened historical sale items for report tab
   const historicalSaleItems = useMemo(() => {
     const list = [];
@@ -391,6 +479,7 @@ export default function OldDataImport({ onNavigate }) {
             billNo: o.invoiceNo || o.billNo || o.id,
             date: o.date,
             partyName: o.shopName,
+            marketId: o.marketId,
             marketName: o.marketName,
             itemName: it.productName || it.name || 'Spice Item',
             itemCode: it.itemCode || '',
@@ -410,6 +499,7 @@ export default function OldDataImport({ onNavigate }) {
           billNo: o.invoiceNo || o.billNo || o.id,
           date: o.date,
           partyName: o.shopName,
+          marketId: o.marketId,
           marketName: o.marketName,
           itemName: 'Mixed Spices Order',
           itemCode: '',
@@ -1239,6 +1329,7 @@ export default function OldDataImport({ onNavigate }) {
 
   const filteredItemsList = useMemo(() => {
     return historicalSaleItems.filter((it) => {
+      if (filterMarket !== 'ALL' && it.marketId !== filterMarket && it.marketName !== filterMarket) return false;
       if (searchQuery) {
         const q = searchQuery.toLowerCase().trim();
         const matchItem = (it.itemName || '').toLowerCase().includes(q);
@@ -1248,7 +1339,7 @@ export default function OldDataImport({ onNavigate }) {
       }
       return true;
     });
-  }, [historicalSaleItems, searchQuery]);
+  }, [historicalSaleItems, filterMarket, searchQuery]);
 
   const filteredCollectionsList = useMemo(() => {
     return historicalCollections.filter((c) => {
@@ -1281,6 +1372,19 @@ export default function OldDataImport({ onNavigate }) {
   const totalHistoricalSalesKg = historicalOrders.reduce((sum, o) => sum + Number(o.totalKg || 0), 0);
   const totalHistoricalCollected = historicalCollections.reduce((sum, c) => sum + Number(c.amount || 0), 0);
   const totalHistoricalReturned = historicalReturns.reduce((sum, r) => sum + Number(r.returnValue || r.amount || 0), 0);
+
+  // Current tab items for bulk actions
+  const currentTabItems = useMemo(() => {
+    if (activeTab === 'parties') return filteredShopsList;
+    if (activeTab === 'sales') return filteredOrdersList;
+    if (activeTab === 'items') return filteredItemsList;
+    if (activeTab === 'collections') return filteredCollectionsList;
+    if (activeTab === 'returns') return filteredReturnsList;
+    return [];
+  }, [activeTab, filteredShopsList, filteredOrdersList, filteredItemsList, filteredCollectionsList, filteredReturnsList]);
+
+  const isAllCurrentSelected = currentTabItems.length > 0 && currentTabItems.every((it) => selectedRowIds.has(it.id));
+  const isSomeCurrentSelected = currentTabItems.some((it) => selectedRowIds.has(it.id));
 
   // ──────────────────────────────────────────────────────────────────────────
   // RENDER: MAIN PAGE TABS
@@ -1421,6 +1525,67 @@ export default function OldDataImport({ onNavigate }) {
         </div>
       </div>
 
+      {/* 3.5 Bulk Action & Selection Toolbar */}
+      {['parties', 'sales', 'items', 'collections', 'returns'].includes(activeTab) && (
+        <div className="bg-slate-900 text-white p-3.5 rounded-2xl shadow-md border border-slate-800 flex flex-wrap items-center justify-between gap-3 animate-in fade-in">
+          <div className="flex items-center gap-3">
+            <label className="flex items-center gap-2 text-xs font-bold cursor-pointer select-none bg-slate-800/80 hover:bg-slate-800 px-3 py-1.5 rounded-xl border border-slate-700 transition-colors">
+              <input
+                type="checkbox"
+                checked={isAllCurrentSelected}
+                ref={(el) => {
+                  if (el) el.indeterminate = !isAllCurrentSelected && isSomeCurrentSelected;
+                }}
+                onChange={() => handleSelectAllRows(currentTabItems)}
+                className="w-4 h-4 rounded text-red-600 focus:ring-red-500 cursor-pointer"
+              />
+              <span>Select All Visible ({currentTabItems.length})</span>
+            </label>
+
+            {selectedRowIds.size > 0 && (
+              <span className="px-2.5 py-1 bg-amber-400 text-slate-950 font-black text-xs rounded-lg flex items-center gap-1.5">
+                <CheckSquare className="w-3.5 h-3.5" />
+                {selectedRowIds.size} Selected
+              </span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            {selectedRowIds.size > 0 && (
+              <>
+                <button
+                  type="button"
+                  onClick={handleClearSelection}
+                  className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold transition-all"
+                >
+                  Deselect
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeleteSelected}
+                  className="px-4 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-black flex items-center gap-1.5 shadow-sm transition-all active:scale-95"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Delete Selected ({selectedRowIds.size})</span>
+                </button>
+              </>
+            )}
+
+            {currentTabItems.length > 0 && (
+              <button
+                type="button"
+                onClick={handleDeleteAllFiltered}
+                className="px-3.5 py-1.5 bg-red-950 hover:bg-red-900 text-red-300 border border-red-800/60 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all active:scale-95"
+                title="Permanently delete all records matching current filter"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                <span>Delete All Filtered ({currentTabItems.length})</span>
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* 4. Tab Content Views */}
       <div className="bg-white rounded-3xl border border-slate-200 shadow-xs overflow-hidden">
         {/* TAB 1: PARTY / SHOP MASTER */}
@@ -1429,6 +1594,17 @@ export default function OldDataImport({ onNavigate }) {
             <table className="w-full text-left text-xs text-slate-700">
               <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase font-black">
                 <tr>
+                  <th className="p-3.5 w-10 text-center">
+                    <input
+                      type="checkbox"
+                      checked={isAllCurrentSelected}
+                      ref={(el) => {
+                        if (el) el.indeterminate = !isAllCurrentSelected && isSomeCurrentSelected;
+                      }}
+                      onChange={() => handleSelectAllRows(filteredShopsList)}
+                      className="w-4 h-4 rounded text-red-600 focus:ring-red-500 cursor-pointer"
+                    />
+                  </th>
                   <th className="p-3.5">Party / Shop Name</th>
                   <th className="p-3.5">Market</th>
                   <th className="p-3.5">Mobile / Phone</th>
@@ -1442,13 +1618,21 @@ export default function OldDataImport({ onNavigate }) {
               <tbody className="divide-y divide-slate-100 font-medium">
                 {filteredShopsList.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="p-8 text-center text-slate-400 font-bold">
+                    <td colSpan={9} className="p-8 text-center text-slate-400 font-bold">
                       No historical parties found. Upload an Excel file to import.
                     </td>
                   </tr>
                 ) : (
                   filteredShopsList.map((s) => (
-                    <tr key={s.id} className="hover:bg-slate-50/80 transition-colors">
+                    <tr key={s.id} className={`hover:bg-slate-50/80 transition-colors ${selectedRowIds.has(s.id) ? 'bg-red-50/40' : ''}`}>
+                      <td className="p-3.5 text-center">
+                        <input
+                          type="checkbox"
+                          checked={selectedRowIds.has(s.id)}
+                          onChange={() => handleToggleSelectRow(s.id)}
+                          className="w-4 h-4 rounded text-red-600 focus:ring-red-500 cursor-pointer"
+                        />
+                      </td>
                       <td className="p-3.5 font-bold text-slate-900 flex items-center gap-2">
                         <Store className="w-4 h-4 text-red-700 flex-shrink-0" />
                         <div>
@@ -1510,6 +1694,17 @@ export default function OldDataImport({ onNavigate }) {
             <table className="w-full text-left text-xs text-slate-700">
               <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase font-black">
                 <tr>
+                  <th className="p-3.5 w-10 text-center">
+                    <input
+                      type="checkbox"
+                      checked={isAllCurrentSelected}
+                      ref={(el) => {
+                        if (el) el.indeterminate = !isAllCurrentSelected && isSomeCurrentSelected;
+                      }}
+                      onChange={() => handleSelectAllRows(filteredOrdersList)}
+                      className="w-4 h-4 rounded text-red-600 focus:ring-red-500 cursor-pointer"
+                    />
+                  </th>
                   <th className="p-3.5">Bill / Invoice No.</th>
                   <th className="p-3.5">Date</th>
                   <th className="p-3.5">Party Name</th>
@@ -1523,13 +1718,21 @@ export default function OldDataImport({ onNavigate }) {
               <tbody className="divide-y divide-slate-100 font-medium">
                 {filteredOrdersList.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="p-8 text-center text-slate-400 font-bold">
+                    <td colSpan={9} className="p-8 text-center text-slate-400 font-bold">
                       No historical sales bills found.
                     </td>
                   </tr>
                 ) : (
                   filteredOrdersList.map((o) => (
-                    <tr key={o.id} className="hover:bg-slate-50/80 transition-colors">
+                    <tr key={o.id} className={`hover:bg-slate-50/80 transition-colors ${selectedRowIds.has(o.id) ? 'bg-red-50/40' : ''}`}>
+                      <td className="p-3.5 text-center">
+                        <input
+                          type="checkbox"
+                          checked={selectedRowIds.has(o.id)}
+                          onChange={() => handleToggleSelectRow(o.id)}
+                          className="w-4 h-4 rounded text-red-600 focus:ring-red-500 cursor-pointer"
+                        />
+                      </td>
                       <td className="p-3.5 font-bold text-slate-900 flex items-center gap-1.5">
                         <FileText className="w-3.5 h-3.5 text-amber-700" />
                         <span>{o.invoiceNo || o.billNo || o.id}</span>
@@ -1574,6 +1777,17 @@ export default function OldDataImport({ onNavigate }) {
             <table className="w-full text-left text-xs text-slate-700">
               <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase font-black">
                 <tr>
+                  <th className="p-3.5 w-10 text-center">
+                    <input
+                      type="checkbox"
+                      checked={isAllCurrentSelected}
+                      ref={(el) => {
+                        if (el) el.indeterminate = !isAllCurrentSelected && isSomeCurrentSelected;
+                      }}
+                      onChange={() => handleSelectAllRows(filteredItemsList)}
+                      className="w-4 h-4 rounded text-red-600 focus:ring-red-500 cursor-pointer"
+                    />
+                  </th>
                   <th className="p-3.5">Bill No.</th>
                   <th className="p-3.5">Date</th>
                   <th className="p-3.5">Party Name</th>
@@ -1582,18 +1796,27 @@ export default function OldDataImport({ onNavigate }) {
                   <th className="p-3.5 text-right">Quantity</th>
                   <th className="p-3.5 text-right">Unit Price</th>
                   <th className="p-3.5 text-right">Amount (₹)</th>
+                  <th className="p-3.5 text-center">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium">
                 {filteredItemsList.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="p-8 text-center text-slate-400 font-bold">
+                    <td colSpan={10} className="p-8 text-center text-slate-400 font-bold">
                       No item-wise sales history available.
                     </td>
                   </tr>
                 ) : (
                   filteredItemsList.slice(0, 300).map((it) => (
-                    <tr key={it.id} className="hover:bg-slate-50/80 transition-colors">
+                    <tr key={it.id} className={`hover:bg-slate-50/80 transition-colors ${selectedRowIds.has(it.id) ? 'bg-red-50/40' : ''}`}>
+                      <td className="p-3.5 text-center">
+                        <input
+                          type="checkbox"
+                          checked={selectedRowIds.has(it.id)}
+                          onChange={() => handleToggleSelectRow(it.id)}
+                          className="w-4 h-4 rounded text-red-600 focus:ring-red-500 cursor-pointer"
+                        />
+                      </td>
                       <td className="p-3.5 font-bold text-slate-800">{it.billNo}</td>
                       <td className="p-3.5 text-slate-600">{it.date}</td>
                       <td className="p-3.5 font-bold text-slate-900">{it.partyName}</td>
@@ -1605,6 +1828,20 @@ export default function OldDataImport({ onNavigate }) {
                       <td className="p-3.5 text-right text-slate-600">₹{it.unitPrice}</td>
                       <td className="p-3.5 text-right font-black text-slate-900">
                         ₹{Number(it.amount).toLocaleString('en-IN')}
+                      </td>
+                      <td className="p-3.5 text-center">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (window.confirm(`Delete bill "${it.billNo}" and all its item records?`)) {
+                              deleteOrder(it.orderId);
+                            }
+                          }}
+                          className="p-1.5 bg-red-50 hover:bg-red-100 text-red-700 rounded-lg text-xs font-bold transition-all border border-red-200"
+                          title="Delete Bill / Order"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       </td>
                     </tr>
                   ))
@@ -1620,6 +1857,17 @@ export default function OldDataImport({ onNavigate }) {
             <table className="w-full text-left text-xs text-slate-700">
               <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase font-black">
                 <tr>
+                  <th className="p-3.5 w-10 text-center">
+                    <input
+                      type="checkbox"
+                      checked={isAllCurrentSelected}
+                      ref={(el) => {
+                        if (el) el.indeterminate = !isAllCurrentSelected && isSomeCurrentSelected;
+                      }}
+                      onChange={() => handleSelectAllRows(filteredCollectionsList)}
+                      className="w-4 h-4 rounded text-red-600 focus:ring-red-500 cursor-pointer"
+                    />
+                  </th>
                   <th className="p-3.5">Receipt / Ref No.</th>
                   <th className="p-3.5">Date</th>
                   <th className="p-3.5">Party Name</th>
@@ -1633,13 +1881,21 @@ export default function OldDataImport({ onNavigate }) {
               <tbody className="divide-y divide-slate-100 font-medium">
                 {filteredCollectionsList.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="p-8 text-center text-slate-400 font-bold">
+                    <td colSpan={9} className="p-8 text-center text-slate-400 font-bold">
                       No historical collection/payment records found.
                     </td>
                   </tr>
                 ) : (
                   filteredCollectionsList.map((c) => (
-                    <tr key={c.id} className="hover:bg-slate-50/80 transition-colors">
+                    <tr key={c.id} className={`hover:bg-slate-50/80 transition-colors ${selectedRowIds.has(c.id) ? 'bg-red-50/40' : ''}`}>
+                      <td className="p-3.5 text-center">
+                        <input
+                          type="checkbox"
+                          checked={selectedRowIds.has(c.id)}
+                          onChange={() => handleToggleSelectRow(c.id)}
+                          className="w-4 h-4 rounded text-red-600 focus:ring-red-500 cursor-pointer"
+                        />
+                      </td>
                       <td className="p-3.5 font-bold text-emerald-950 flex items-center gap-1.5">
                         <IndianRupee className="w-3.5 h-3.5 text-emerald-700" />
                         <span>{c.receiptNumber || c.refNo || c.id}</span>
@@ -1688,6 +1944,17 @@ export default function OldDataImport({ onNavigate }) {
             <table className="w-full text-left text-xs text-slate-700">
               <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase font-black">
                 <tr>
+                  <th className="p-3.5 w-10 text-center">
+                    <input
+                      type="checkbox"
+                      checked={isAllCurrentSelected}
+                      ref={(el) => {
+                        if (el) el.indeterminate = !isAllCurrentSelected && isSomeCurrentSelected;
+                      }}
+                      onChange={() => handleSelectAllRows(filteredReturnsList)}
+                      className="w-4 h-4 rounded text-red-600 focus:ring-red-500 cursor-pointer"
+                    />
+                  </th>
                   <th className="p-3.5">Invoice / CN No.</th>
                   <th className="p-3.5">Date</th>
                   <th className="p-3.5">Party Name</th>
@@ -1701,13 +1968,21 @@ export default function OldDataImport({ onNavigate }) {
               <tbody className="divide-y divide-slate-100 font-medium">
                 {filteredReturnsList.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="p-8 text-center text-slate-400 font-bold">
+                    <td colSpan={9} className="p-8 text-center text-slate-400 font-bold">
                       No historical returns or credit notes recorded.
                     </td>
                   </tr>
                 ) : (
                   filteredReturnsList.map((r) => (
-                    <tr key={r.id} className="hover:bg-slate-50/80 transition-colors">
+                    <tr key={r.id} className={`hover:bg-slate-50/80 transition-colors ${selectedRowIds.has(r.id) ? 'bg-red-50/40' : ''}`}>
+                      <td className="p-3.5 text-center">
+                        <input
+                          type="checkbox"
+                          checked={selectedRowIds.has(r.id)}
+                          onChange={() => handleToggleSelectRow(r.id)}
+                          className="w-4 h-4 rounded text-red-600 focus:ring-red-500 cursor-pointer"
+                        />
+                      </td>
                       <td className="p-3.5 font-bold text-red-950 flex items-center gap-1.5">
                         <RotateCcw className="w-3.5 h-3.5 text-red-700" />
                         <span>{r.invoiceNo || r.id}</span>
