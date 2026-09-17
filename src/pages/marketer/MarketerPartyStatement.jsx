@@ -23,6 +23,8 @@ import {
   Layers,
 } from 'lucide-react';
 
+import { isShopMatchingRecord, calculatePartyLedger } from '../../utils/partyLedgerHelper';
+
 export default function MarketerPartyStatement({ onGoHome }) {
   const { currentUser } = useAuth();
   const { getFormattedDate, getAuthorizedShops, orders, collections, returns } = useData();
@@ -43,27 +45,19 @@ export default function MarketerPartyStatement({ onGoHome }) {
   // Compute live financial totals for marketer's authorized shops
   const enrichedShops = useMemo(() => {
     return authorizedShops.map((s) => {
-      const sNorm = (s.name || '').toLowerCase().trim();
-      const shopOrders = orders.filter((o) => o.shopId === s.id || (o.shopName && o.shopName.toLowerCase().trim() === sNorm));
-      const shopCols = collections.filter((c) => c.shopId === s.id || (c.shopName && c.shopName.toLowerCase().trim() === sNorm));
-      const shopRets = returns.filter((r) => r.shopId === s.id || (r.shopName && r.shopName.toLowerCase().trim() === sNorm));
-
-      const totalSales = shopOrders.reduce((sum, o) => sum + (o.grandTotal || o.totalValue || o.subtotal || 0), 0);
-      const totalPaid = shopCols.reduce((sum, c) => sum + (c.amount || 0), 0);
-      const totalRet = shopRets.reduce((sum, r) => sum + (r.returnValue || r.amount || 0), 0);
-
-      const openingBal = Number(s.openingOutstanding || s.openingBalance || 0);
-      const computedOutstanding = Math.max(0, openingBal + totalSales - totalPaid - totalRet);
+      const ledger = calculatePartyLedger(s, orders, collections, returns);
+      const shopOrders = orders.filter((o) => isShopMatchingRecord(o, s));
+      const shopCols = collections.filter((c) => isShopMatchingRecord(c, s));
 
       const lastOrd = shopOrders.sort((a, b) => (b.date || '').localeCompare(a.date || ''))[0];
       const lastCol = shopCols.sort((a, b) => (b.date || '').localeCompare(a.date || ''))[0];
 
       return {
         ...s,
-        computedOutstanding: s.outstanding !== undefined && s.outstanding !== null ? Number(s.outstanding) : computedOutstanding,
-        totalSales,
-        totalPaid,
-        totalRet,
+        computedOutstanding: ledger.closingBalance,
+        totalSales: ledger.totalSales,
+        totalPaid: ledger.totalCollections,
+        totalRet: ledger.totalReturns,
         lastTransactionDate: lastOrd?.date || lastCol?.date || s.lastOrderDate || '—',
       };
     });

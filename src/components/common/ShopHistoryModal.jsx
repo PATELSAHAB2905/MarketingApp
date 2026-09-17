@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useData } from '../../context/DataContext';
+import { calculatePartyLedger, isShopMatchingRecord } from '../../utils/partyLedgerHelper';
 import {
   X,
   Store,
@@ -24,13 +25,20 @@ export default function ShopHistoryModal({ shop, onClose }) {
 
   if (!shop) return null;
 
-  const shopNorm = (shop.name || '').toLowerCase().trim();
+  // Compute live unified ledger metrics
+  const ledgerData = useMemo(() => {
+    return calculatePartyLedger({
+      shop,
+      orders,
+      collections,
+      returns,
+    });
+  }, [shop, orders, collections, returns]);
 
-  // 1. All Orders for this shop (both APP and OLD IMPORT)
+  // 1. All Orders for this shop (using robust matcher)
   const shopOrders = orders
-    .filter((o) => o.shopId === shop.id || (o.shopName && o.shopName.toLowerCase().trim() === shopNorm))
+    .filter((o) => isShopMatchingRecord(o, shop))
     .sort((a, b) => {
-      // Sort newest first
       const dateA = a.date || a.createdDate || '';
       const dateB = b.date || b.createdDate || '';
       return dateB.localeCompare(dateA);
@@ -38,7 +46,7 @@ export default function ShopHistoryModal({ shop, onClose }) {
 
   // 2. All Collections / Payments for this shop
   const shopCollections = collections
-    .filter((c) => c.shopId === shop.id || (c.shopName && c.shopName.toLowerCase().trim() === shopNorm))
+    .filter((c) => isShopMatchingRecord(c, shop))
     .sort((a, b) => {
       const dateA = a.date || a.createdDate || '';
       const dateB = b.date || b.createdDate || '';
@@ -47,18 +55,18 @@ export default function ShopHistoryModal({ shop, onClose }) {
 
   // 3. All Returns / Credit Notes for this shop
   const shopReturns = returns
-    .filter((r) => r.shopId === shop.id || (r.shopName && r.shopName.toLowerCase().trim() === shopNorm))
+    .filter((r) => isShopMatchingRecord(r, shop))
     .sort((a, b) => {
       const dateA = a.date || a.createdDate || '';
       const dateB = b.date || b.createdDate || '';
       return dateB.localeCompare(dateA);
     });
 
-  // Aggregate Metrics
-  const totalPurchaseVal = shopOrders.reduce((sum, o) => sum + (o.grandTotal || o.totalValue || o.subtotal || 0), 0);
-  const totalCollectedVal = shopCollections.reduce((sum, c) => sum + (c.amount || 0), 0);
-  const totalReturnedVal = shopReturns.reduce((sum, r) => sum + (r.returnValue || r.amount || 0), 0);
-  const calculatedOutstanding = Math.max(0, totalPurchaseVal - totalCollectedVal - totalReturnedVal);
+  // Aggregate Metrics from unified ledger
+  const totalPurchaseVal = ledgerData.totalSales;
+  const totalCollectedVal = ledgerData.totalCollections;
+  const totalReturnedVal = ledgerData.totalReturns;
+  const calculatedOutstanding = ledgerData.closingBalance;
 
   const lastOrder = shopOrders[0];
   const lastPayment = shopCollections[0];
@@ -178,7 +186,7 @@ export default function ShopHistoryModal({ shop, onClose }) {
                 <div className="bg-amber-50 p-3.5 rounded-2xl border border-amber-300">
                   <p className="text-[10px] font-bold text-amber-900 uppercase">Outstanding Balance</p>
                   <p className="text-lg font-black text-amber-800 mt-0.5">
-                    ₹{(shop.outstanding || calculatedOutstanding).toLocaleString('en-IN')}
+                    ₹{calculatedOutstanding.toLocaleString('en-IN', { minimumFractionDigits: 2 })}
                   </p>
                   <span className="text-[10px] text-amber-700 font-bold">Current Balance</span>
                 </div>
