@@ -126,15 +126,16 @@ export default function PartyStatementDetail({
 
       let txnTypeDisplay = 'Sale';
       if (isPayment) txnTypeDisplay = 'Payment-In';
-      if (isReturn) txnTypeDisplay = 'Sales Return';
+      if (isReturn) txnTypeDisplay = txn.raw?.isCreditNote ? 'Credit Note' : 'Sales Return';
 
       let paymentType = '—';
-      if (isPayment) paymentType = txn.paymentMode || 'Cash';
+      if (isPayment) paymentType = txn.paymentMode || txn.raw?.paymentMode || 'Cash';
+      else if (isSale && txn.paidAmount > 0) paymentType = txn.raw?.paymentMode || 'Cash';
 
-      let paymentStatus = 'Unpaid';
       let totalAmount = txn.debit || txn.amount;
-      let receivedAmount = 0;
-      let txnBalance = txn.debit || txn.amount;
+      let receivedAmount = txn.receivedAmount || 0;
+      let txnBalance = txn.txnBalance !== undefined ? txn.txnBalance : (txn.debit || txn.amount);
+      let paymentStatus = 'Unpaid';
 
       if (isPayment) {
         paymentStatus = 'Used';
@@ -142,16 +143,19 @@ export default function PartyStatementDetail({
         receivedAmount = txn.credit || txn.amount;
         txnBalance = 0;
       } else if (isReturn) {
-        paymentStatus = 'Adjusted';
+        paymentStatus = 'Paid';
         totalAmount = txn.credit || txn.amount;
-        receivedAmount = txn.credit || txn.amount;
-        txnBalance = 0;
+        receivedAmount = 0;
+        txnBalance = txn.credit || txn.amount;
       } else {
-        // Sale: check if there's any immediate collection linked
-        if (txn.raw?.paidAmount && txn.raw.paidAmount > 0) {
-          receivedAmount = txn.raw.paidAmount;
-          txnBalance = Math.max(0, totalAmount - receivedAmount);
-          paymentStatus = txnBalance === 0 ? 'Paid' : 'Partial';
+        // Sale
+        totalAmount = txn.debit || txn.amount;
+        receivedAmount = txn.paidAmount || 0;
+        txnBalance = Math.max(0, totalAmount - receivedAmount);
+        if (receivedAmount >= totalAmount && totalAmount > 0) {
+          paymentStatus = 'Paid';
+        } else if (receivedAmount > 0) {
+          paymentStatus = 'Partial';
         } else {
           paymentStatus = 'Unpaid';
         }
@@ -196,20 +200,20 @@ export default function PartyStatementDetail({
   const periodItemDetails = useMemo(() => {
     const itemsList = [];
     ledgerData.periodTransactions.forEach((txn) => {
-      if (txn.type === 'SALE' && txn.raw?.items && Array.isArray(txn.raw.items)) {
+      if ((txn.type === 'SALE' || txn.type === 'RETURN') && txn.raw?.items && Array.isArray(txn.raw.items)) {
         txn.raw.items.forEach((item, idx) => {
           itemsList.push({
             date: txn.date,
-            billNo: txn.refNo || `ORD-${idx + 1}`,
-            itemName: item.productName || item.name || 'Spices Item',
-            itemCode: item.productCode || item.code || '—',
-            hsn: item.hsn || item.hsnCode || '0910',
-            qty: item.quantityKg || item.quantityPouch || item.quantity || 1,
-            unit: item.unit || (item.quantityKg ? 'KG' : 'Pouch'),
-            rate: item.pricePerKg || item.sellingPrice || item.rate || 0,
+            billNo: txn.refNo || (txn.type === 'RETURN' ? `RET-${idx + 1}` : `ORD-${idx + 1}`),
+            itemName: item.itemName || item.productName || item.name || 'Spices Item',
+            itemCode: item.itemCode || item.productCode || item.code || '—',
+            hsn: item.hsn || item.hsnCode || '—',
+            qty: item.quantityKg || item.quantity || item.quantityPouch || 1,
+            unit: item.unit || (item.quantityKg ? 'Kg' : 'Pouch'),
+            rate: item.unitPrice || item.rate || item.pricePerKg || item.sellingPrice || 0,
             discount: item.discount || 0,
             tax: item.tax || 0,
-            amount: item.subtotal || item.total || (item.pricePerKg * (item.quantityKg || 1)) || 0,
+            amount: item.amount || item.subtotal || item.total || (Number(item.unitPrice || item.rate || 0) * Number(item.quantityKg || item.quantity || 1)) || 0,
           });
         });
       }

@@ -843,17 +843,24 @@ export default function OldDataImport({ onNavigate }) {
             date: rawDate,
             partyName: rawParty,
             itemName: rawItem || 'Spice Product',
+            productName: rawItem || 'Spice Product',
+            name: rawItem || 'Spice Product',
             itemCode: itemColMap.itemCode !== -1 ? String(row[itemColMap.itemCode] || '').trim() : '',
+            productCode: itemColMap.itemCode !== -1 ? String(row[itemColMap.itemCode] || '').trim() : '',
             hsn: itemColMap.hsn !== -1 ? String(row[itemColMap.hsn] || '').trim() : '',
+            hsnCode: itemColMap.hsn !== -1 ? String(row[itemColMap.hsn] || '').trim() : '',
             category: itemColMap.category !== -1 ? String(row[itemColMap.category] || '').trim() : 'Spices',
             quantity: rawQty,
             quantityKg: rawQty,
             unit: itemColMap.unit !== -1 ? String(row[itemColMap.unit] || 'KG').trim() : 'KG',
             unitPrice: rawPrice,
             rate: rawPrice,
+            pricePerKg: rawPrice,
+            sellingPrice: rawPrice,
             discount: itemColMap.discount !== -1 ? cleanNumber(row[itemColMap.discount]) : 0,
             amount: rawAmt,
             subtotal: rawAmt,
+            total: rawAmt,
           };
 
           detectedItemsList.push(itemObj);
@@ -1059,6 +1066,9 @@ export default function OldDataImport({ onNavigate }) {
           const retKey = `${normPName}_${retNo.trim()}_${rawDate}`;
           const isDuplicate = existingReturnKeys.has(retKey);
 
+          const linkedRetItems = itemsByInvoiceMap.get(cleanInvKey(retNo)) || [];
+          const totalRetKg = linkedRetItems.reduce((sum, it) => sum + (it.quantityKg || 0), 0);
+
           const returnRecord = {
             id: `HIST-RET-${retNo}-${Date.now()}-${r}`,
             invoiceNo: retNo,
@@ -1069,10 +1079,11 @@ export default function OldDataImport({ onNavigate }) {
             marketName: selectedMarket?.name || 'Market',
             date: rawDate || getFormattedDate(),
             time: '12:00 PM',
-            productName: rawDesc || 'Historical Credit Note / Return',
-            quantityKg: 0,
+            productName: linkedRetItems.length > 0 ? linkedRetItems.map((it) => it.itemName).join(', ') : (rawDesc || 'Historical Credit Note / Return'),
+            quantityKg: totalRetKg,
             returnValue: rawTotal || rawRec,
             amount: rawTotal || rawRec,
+            items: linkedRetItems,
             reason: rawDesc || 'Historical Sales Return',
             isCreditNote: true,
             source: 'OLD_IMPORT',

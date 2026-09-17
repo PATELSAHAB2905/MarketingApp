@@ -143,7 +143,15 @@ export const isShopMatchingRecord = (record, targetShop) => {
 };
 
 /**
- * Calculates unified running ledger for a party/shop
+ * Calculates unified running ledger for a party/shop matching Vyapar accounting rules.
+ *
+ * Rules:
+ * 1. Sale: Adds gross amount (debit) to total sales. Direct cash received on the spot (paidAmount)
+ *    is credited directly against the invoice, changing running receivable by +(debit - paidAmount).
+ *    No fake/duplicate Payment-In row is created.
+ * 2. Payment-In: Standalone payment receipt. Decreases running receivable by -credit.
+ * 3. Credit Note / Sales Return: Decreases running receivable by -credit.
+ * 4. Closing Receivable = Opening + Total Sales - Total Collections (Payment-In + Direct on Sale) - Total Returns.
  */
 export const calculatePartyLedger = ({
   shop,
@@ -160,8 +168,10 @@ export const calculatePartyLedger = ({
       totalCollections: 0,
       totalReturns: 0,
       closingBalance: 0,
+      paymentStatus: 'Paid',
       transactions: [],
       periodTransactions: [],
+      allTransactions: [],
     };
   }
 
@@ -173,7 +183,7 @@ export const calculatePartyLedger = ({
   const shopOrders = matchedOrders.map((o) => {
     const dateStr = o.date || o.createdDate || '';
     const isoDate = parseDateToComparable(dateStr);
-    const amount = Number(o.grandTotal || o.totalValue || o.subtotal || 0);
+    const amount = Number(o.grandTotal || o.totalValue || o.subtotal || o.amount || 0);
     const paidAmount = Number(o.paidAmount || 0);
     return {
       id: o.id || `ord-${Math.random()}`,
@@ -217,31 +227,7 @@ export const calculatePartyLedger = ({
     };
   });
 
-  // 3. Check for orders that had direct cash/advance payment recorded on bill (paidAmount > 0)
-  // and ensure they are represented as payments if no standalone collection was created for them.
-  const standaloneColRefs = new Set(shopCollections.map((c) => String(c.refNo).trim()));
-  const directOrderPayments = [];
-
-  shopOrders.forEach((o) => {
-    if (o.paidAmount > 0 && !standaloneColRefs.has(String(o.refNo).trim())) {
-      directOrderPayments.push({
-        id: `ord-pay-${o.id}`,
-        type: 'PAYMENT',
-        particular: `Payment Received on Bill #${o.refNo}`,
-        date: o.date,
-        isoDate: o.isoDate,
-        refNo: o.refNo,
-        debit: 0,
-        credit: o.paidAmount,
-        amount: o.paidAmount,
-        paymentMode: 'Cash / Direct',
-        raw: o.raw,
-        isOrderPayment: true,
-      });
-    }
-  });
-
-  // 4. Gather all returns for this shop using robust fuzzy matcher
+  // 3. Gather all returns for this shop using robust fuzzy matcher
   const matchedReturns = returns.filter((r) => isShopMatchingRecord(r, shop));
   const shopReturns = matchedReturns.map((r) => {
     const dateStr = r.date || r.createdDate || '';
@@ -264,13 +250,17 @@ export const calculatePartyLedger = ({
   });
 
   // Combine and sort chronologically (oldest first for running ledger)
-  const allChronological = [...shopOrders, ...shopCollections, ...directOrderPayments, ...shopReturns].sort((a, b) => {
-    if (a.isoDate === b.isoDate) {
+  const allChronological = [...shopOrders, ...shopCollections, ...shopReturns].sort((a, b) => {
+    const aIso = a.isoDate || '';
+    const bIso = b.isoDate || '';
+    if (aIso === bIso) {
       if (a.type === 'SALE' && b.type !== 'SALE') return -1;
       if (a.type !== 'SALE' && b.type === 'SALE') return 1;
+      if (a.type === 'RETURN' && b.type === 'PAYMENT') return -1;
+      if (a.type === 'PAYMENT' && b.type === 'RETURN') return 1;
       return 0;
     }
-    return (a.isoDate || '').localeCompare(b.isoDate || '');
+    return aIso.localeCompare(bIso);
   });
 
   // Calculate Opening Balance before `fromDateIso`
@@ -278,9 +268,10 @@ export const calculatePartyLedger = ({
   const periodTransactionsRaw = [];
 
   allChronological.forEach((txn) => {
+    const txnPaid = txn.type === 'SALE' ? Number(txn.paidAmount || 0) : 0;
     if (txn.isoDate < fromDateIso) {
       if (txn.type === 'SALE') {
-        openingBalance += txn.debit;
+        openingBalance += (txn.debit - txnPaid);
       } else {
         openingBalance -= txn.credit;
       }
@@ -296,29 +287,41 @@ export const calculatePartyLedger = ({
   let totalReturns = 0;
 
   const periodTransactions = periodTransactionsRaw.map((txn) => {
+    let txnReceived = 0;
+    let txnBalance = 0;
+
     if (txn.type === 'SALE') {
-      currentRunningBalance += txn.debit;
+      txnReceived = Number(txn.paidAmount || 0);
+      txnBalance = Math.max(0, txn.debit - txnReceived);
+      currentRunningBalance += (txn.debit - txnReceived);
       totalSales += txn.debit;
+      totalCollections += txnReceived;
     } else if (txn.type === 'PAYMENT') {
+      txnReceived = txn.credit;
+      txnBalance = 0;
       currentRunningBalance -= txn.credit;
       totalCollections += txn.credit;
     } else if (txn.type === 'RETURN') {
+      txnReceived = 0;
+      txnBalance = txn.credit;
       currentRunningBalance -= txn.credit;
       totalReturns += txn.credit;
     }
 
     return {
       ...txn,
-      runningBalance: currentRunningBalance,
+      receivedAmount: txnReceived,
+      txnBalance,
+      runningBalance: Number(currentRunningBalance.toFixed(2)),
     };
   });
 
-  const closingBalance = openingBalance + totalSales - totalCollections - totalReturns;
+  const closingBalance = Number((openingBalance + totalSales - totalCollections - totalReturns).toFixed(2));
 
   // Determine payment status
   let paymentStatus = 'Paid';
   if (closingBalance > 0) {
-    const hasPayments = totalCollections > 0 || shopCollections.length > 0 || directOrderPayments.length > 0;
+    const hasPayments = totalCollections > 0 || shopCollections.length > 0;
     paymentStatus = hasPayments ? 'Partially Paid' : 'Outstanding';
   }
 
