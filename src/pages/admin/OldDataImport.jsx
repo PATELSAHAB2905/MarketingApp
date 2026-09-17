@@ -186,6 +186,10 @@ export default function OldDataImport({ onNavigate }) {
     importHistoricalBusinessData,
     updateShop,
     deleteShop,
+    deleteOrder,
+    deleteCollection,
+    deleteReturn,
+    deleteImportBatch,
     getFormattedDate,
     getFormattedTime,
   } = useData();
@@ -228,7 +232,7 @@ export default function OldDataImport({ onNavigate }) {
 
   const handleConfirmDeleteParty = () => {
     if (!deletingParty) return;
-    deleteShop(deletingParty.id, deletePartyTransactions);
+    deleteShop(deletingParty, deletePartyTransactions);
     setDeletingParty(null);
   };
 
@@ -1513,12 +1517,13 @@ export default function OldDataImport({ onNavigate }) {
                   <th className="p-3.5 text-right">Total KG</th>
                   <th className="p-3.5 text-right">Bill Total (₹)</th>
                   <th className="p-3.5 text-center">Source</th>
+                  <th className="p-3.5 text-center">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium">
                 {filteredOrdersList.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="p-8 text-center text-slate-400 font-bold">
+                    <td colSpan={8} className="p-8 text-center text-slate-400 font-bold">
                       No historical sales bills found.
                     </td>
                   </tr>
@@ -1540,6 +1545,20 @@ export default function OldDataImport({ onNavigate }) {
                         <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-100 text-amber-900 border border-amber-200">
                           HISTORICAL
                         </span>
+                      </td>
+                      <td className="p-3.5 text-center">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (window.confirm(`Delete historical bill "${o.invoiceNo || o.id}"?`)) {
+                              deleteOrder(o.id);
+                            }
+                          }}
+                          className="p-1.5 bg-red-50 hover:bg-red-100 text-red-700 rounded-lg text-xs font-bold transition-all border border-red-200"
+                          title="Delete Bill"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       </td>
                     </tr>
                   ))
@@ -1608,12 +1627,13 @@ export default function OldDataImport({ onNavigate }) {
                   <th className="p-3.5 text-right">Amount (₹)</th>
                   <th className="p-3.5">Description</th>
                   <th className="p-3.5 text-center">Status</th>
+                  <th className="p-3.5 text-center">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium">
                 {filteredCollectionsList.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="p-8 text-center text-slate-400 font-bold">
+                    <td colSpan={8} className="p-8 text-center text-slate-400 font-bold">
                       No historical collection/payment records found.
                     </td>
                   </tr>
@@ -1640,6 +1660,20 @@ export default function OldDataImport({ onNavigate }) {
                           PAID
                         </span>
                       </td>
+                      <td className="p-3.5 text-center">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (window.confirm(`Delete payment receipt "${c.receiptNumber || c.refNo || c.id}"?`)) {
+                              deleteCollection(c.id);
+                            }
+                          }}
+                          className="p-1.5 bg-red-50 hover:bg-red-100 text-red-700 rounded-lg text-xs font-bold transition-all border border-red-200"
+                          title="Delete Payment"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </td>
                     </tr>
                   ))
                 )}
@@ -1661,12 +1695,13 @@ export default function OldDataImport({ onNavigate }) {
                   <th className="p-3.5 text-right">Return Value (₹)</th>
                   <th className="p-3.5">Reason</th>
                   <th className="p-3.5 text-center">Type</th>
+                  <th className="p-3.5 text-center">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium">
                 {filteredReturnsList.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="p-8 text-center text-slate-400 font-bold">
+                    <td colSpan={8} className="p-8 text-center text-slate-400 font-bold">
                       No historical returns or credit notes recorded.
                     </td>
                   </tr>
@@ -1688,6 +1723,20 @@ export default function OldDataImport({ onNavigate }) {
                         <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-red-100 text-red-900 border border-red-200">
                           CREDIT NOTE
                         </span>
+                      </td>
+                      <td className="p-3.5 text-center">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (window.confirm(`Delete return record "${r.invoiceNo || r.id}"?`)) {
+                              deleteReturn(r.id);
+                            }
+                          }}
+                          className="p-1.5 bg-red-50 hover:bg-red-100 text-red-700 rounded-lg text-xs font-bold transition-all border border-red-200"
+                          title="Delete Return"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       </td>
                     </tr>
                   ))
@@ -1755,12 +1804,13 @@ export default function OldDataImport({ onNavigate }) {
                   <th className="p-3.5 text-right">Bills / Items</th>
                   <th className="p-3.5 text-right">Collections</th>
                   <th className="p-3.5 text-center">Status</th>
+                  <th className="p-3.5 text-center">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium">
                 {importBatches.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="p-8 text-center text-slate-400 font-bold">
+                    <td colSpan={9} className="p-8 text-center text-slate-400 font-bold">
                       No historical import batches recorded yet.
                     </td>
                   </tr>
@@ -1784,6 +1834,20 @@ export default function OldDataImport({ onNavigate }) {
                         <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-900 border border-emerald-200">
                           {b.status || 'Completed'}
                         </span>
+                      </td>
+                      <td className="p-3.5 text-center">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (window.confirm(`Delete import batch "${b.fileName || b.id}" and all records created by it?`)) {
+                              deleteImportBatch(b.id);
+                            }
+                          }}
+                          className="p-1.5 bg-red-50 hover:bg-red-100 text-red-700 rounded-lg text-xs font-bold transition-all border border-red-200"
+                          title="Delete Batch"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       </td>
                     </tr>
                   ))

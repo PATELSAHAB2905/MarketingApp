@@ -1912,84 +1912,194 @@ export const DataProvider = ({ children }) => {
     return savedShop;
   };
 
-  const deleteShop = (shopId, deleteTransactions = true) => {
-    const targetShop = shops.find((s) => s.id === shopId) || { id: shopId, name: '' };
+  const deleteShop = (shopIdentifier, deleteTransactions = true) => {
+    let targetId = '';
+    let targetName = '';
+    let targetPhone = '';
+
+    if (typeof shopIdentifier === 'object' && shopIdentifier !== null) {
+      targetId = shopIdentifier.id || '';
+      targetName = shopIdentifier.name || shopIdentifier.shopName || shopIdentifier.partyName || '';
+      targetPhone = shopIdentifier.mobile || shopIdentifier.phone || '';
+    } else {
+      targetId = String(shopIdentifier || '');
+    }
+
+    if (!targetName && targetId) {
+      const foundShop = shops.find((s) => s.id === targetId);
+      if (foundShop) {
+        targetName = foundShop.name || '';
+        targetPhone = foundShop.mobile || foundShop.phone || '';
+      } else {
+        const foundOrder = orders.find((o) => o.shopId === targetId || o.id === targetId);
+        if (foundOrder) targetName = foundOrder.shopName || '';
+        const foundCol = collections.find((c) => c.shopId === targetId || c.id === targetId);
+        if (foundCol) targetName = foundCol.shopName || '';
+      }
+    }
+
+    const targetShop = {
+      id: targetId,
+      name: targetName,
+      mobile: targetPhone,
+      phone: targetPhone,
+    };
+
+    const isMatch = (item) => {
+      if (!item) return false;
+      if (targetId && (item.id === targetId || item.shopId === targetId)) return true;
+      if (isShopMatchingRecord(item, targetShop)) return true;
+      return false;
+    };
 
     // 1. Remove from shops master (matches by exact ID or fuzzy name)
     setShops((prev) => {
-      const remaining = prev.filter((s) => s.id !== shopId && !isShopMatchingRecord(s, targetShop));
+      const deleted = prev.filter(isMatch);
+      deleted.forEach((s) => deleteDocument('shops', s.id).catch(() => {}));
+      const remaining = prev.filter((s) => !isMatch(s));
       localStorage.setItem('PATEL_SHOPS', JSON.stringify(remaining));
       return remaining;
     });
 
-    // Delete shop doc from Firestore
-    deleteDocument('shops', shopId).catch((err) => console.warn('Firestore delete shop error:', err));
-
     if (deleteTransactions) {
       // 2. Delete Orders (Historical & Live)
       setOrders((prev) => {
-        const deleted = prev.filter((o) => isShopMatchingRecord(o, targetShop));
+        const deleted = prev.filter(isMatch);
         deleted.forEach((o) => deleteDocument('orders', o.id).catch(() => {}));
-        const remaining = prev.filter((o) => !isShopMatchingRecord(o, targetShop));
+        const remaining = prev.filter((o) => !isMatch(o));
         localStorage.setItem('PATEL_ORDERS', JSON.stringify(remaining));
         return remaining;
       });
 
       // 3. Delete Collections / Payments (Historical & Live)
       setCollections((prev) => {
-        const deleted = prev.filter((c) => isShopMatchingRecord(c, targetShop));
+        const deleted = prev.filter(isMatch);
         deleted.forEach((c) => deleteDocument('collections', c.id).catch(() => {}));
-        const remaining = prev.filter((c) => !isShopMatchingRecord(c, targetShop));
+        const remaining = prev.filter((c) => !isMatch(c));
         localStorage.setItem('PATEL_COLLECTIONS', JSON.stringify(remaining));
         return remaining;
       });
 
       // 4. Delete Returns (Historical & Live)
       setReturns((prev) => {
-        const deleted = prev.filter((r) => isShopMatchingRecord(r, targetShop));
+        const deleted = prev.filter(isMatch);
         deleted.forEach((r) => deleteDocument('returns', r.id).catch(() => {}));
-        const remaining = prev.filter((r) => !isShopMatchingRecord(r, targetShop));
+        const remaining = prev.filter((r) => !isMatch(r));
         localStorage.setItem('PATEL_RETURNS', JSON.stringify(remaining));
         return remaining;
       });
 
       // 5. Delete Visits
       setVisits((prev) => {
-        const remaining = prev.filter((v) => !isShopMatchingRecord(v, targetShop));
+        const remaining = prev.filter((v) => !isMatch(v));
         localStorage.setItem('PATEL_VISITS', JSON.stringify(remaining));
         return remaining;
       });
 
       // 6. Delete Complaints
       setComplaints((prev) => {
-        const remaining = prev.filter((cmp) => !isShopMatchingRecord(cmp, targetShop));
+        const remaining = prev.filter((cmp) => !isMatch(cmp));
         localStorage.setItem('PATEL_COMPLAINTS', JSON.stringify(remaining));
         return remaining;
       });
 
       // 7. Delete Follow-ups
       setFollowups((prev) => {
-        const remaining = prev.filter((flw) => !isShopMatchingRecord(flw, targetShop));
+        const remaining = prev.filter((flw) => !isMatch(flw));
         localStorage.setItem('PATEL_FOLLOWUPS', JSON.stringify(remaining));
         return remaining;
       });
 
       // 8. Delete Photos
       setShopPhotos((prev) => {
-        const remaining = prev.filter((p) => !isShopMatchingRecord(p, targetShop));
+        const remaining = prev.filter((p) => !isMatch(p));
         localStorage.setItem('PATEL_SHOP_PHOTOS', JSON.stringify(remaining));
         return remaining;
       });
 
       // 9. Delete Leads
       setLeads((prev) => {
-        const remaining = prev.filter((l) => !isShopMatchingRecord({ shopName: l.shopName, mobile: l.mobile }, targetShop));
+        const remaining = prev.filter((l) => !isMatch({ shopName: l.shopName, mobile: l.mobile }));
         return remaining;
       });
     }
 
-    addAuditLog('Admin', 'ADMIN', 'DELETE_SHOP', `Deleted shop ${targetShop.name || shopId} and all associated historical & current transactions`, targetShop, null);
+    addAuditLog('Admin', 'ADMIN', 'DELETE_SHOP', `Deleted shop ${targetName || targetId} and all associated historical & current transactions`, targetShop, null);
     return true;
+  };
+
+  const deleteOrder = (orderId) => {
+    if (!orderId) return;
+    setOrders((prev) => {
+      const remaining = prev.filter((o) => o.id !== orderId);
+      localStorage.setItem('PATEL_ORDERS', JSON.stringify(remaining));
+      return remaining;
+    });
+    deleteDocument('orders', orderId).catch(() => {});
+    addAuditLog('Admin', 'ADMIN', 'DELETE_ORDER', `Deleted order ${orderId}`, null, null);
+  };
+
+  const deleteCollection = (collectionId) => {
+    if (!collectionId) return;
+    setCollections((prev) => {
+      const remaining = prev.filter((c) => c.id !== collectionId);
+      localStorage.setItem('PATEL_COLLECTIONS', JSON.stringify(remaining));
+      return remaining;
+    });
+    deleteDocument('collections', collectionId).catch(() => {});
+    addAuditLog('Admin', 'ADMIN', 'DELETE_COLLECTION', `Deleted collection ${collectionId}`, null, null);
+  };
+
+  const deleteReturn = (returnId) => {
+    if (!returnId) return;
+    setReturns((prev) => {
+      const remaining = prev.filter((r) => r.id !== returnId);
+      localStorage.setItem('PATEL_RETURNS', JSON.stringify(remaining));
+      return remaining;
+    });
+    deleteDocument('returns', returnId).catch(() => {});
+    addAuditLog('Admin', 'ADMIN', 'DELETE_RETURN', `Deleted return ${returnId}`, null, null);
+  };
+
+  const deleteImportBatch = (batchId) => {
+    if (!batchId) return;
+    setImportBatches((prev) => {
+      const remaining = prev.filter((b) => b.id !== batchId);
+      localStorage.setItem('PATEL_IMPORT_BATCHES', JSON.stringify(remaining));
+      return remaining;
+    });
+    deleteDocument('importBatches', batchId).catch(() => {});
+
+    // Delete records created by this batch
+    setShops((prev) => {
+      const deleted = prev.filter((s) => s.importBatchId === batchId);
+      deleted.forEach((s) => deleteDocument('shops', s.id).catch(() => {}));
+      const remaining = prev.filter((s) => s.importBatchId !== batchId);
+      localStorage.setItem('PATEL_SHOPS', JSON.stringify(remaining));
+      return remaining;
+    });
+    setOrders((prev) => {
+      const deleted = prev.filter((o) => o.importBatchId === batchId);
+      deleted.forEach((o) => deleteDocument('orders', o.id).catch(() => {}));
+      const remaining = prev.filter((o) => o.importBatchId !== batchId);
+      localStorage.setItem('PATEL_ORDERS', JSON.stringify(remaining));
+      return remaining;
+    });
+    setCollections((prev) => {
+      const deleted = prev.filter((c) => c.importBatchId === batchId);
+      deleted.forEach((c) => deleteDocument('collections', c.id).catch(() => {}));
+      const remaining = prev.filter((c) => c.importBatchId !== batchId);
+      localStorage.setItem('PATEL_COLLECTIONS', JSON.stringify(remaining));
+      return remaining;
+    });
+    setReturns((prev) => {
+      const deleted = prev.filter((r) => r.importBatchId === batchId);
+      deleted.forEach((r) => deleteDocument('returns', r.id).catch(() => {}));
+      const remaining = prev.filter((r) => r.importBatchId !== batchId);
+      localStorage.setItem('PATEL_RETURNS', JSON.stringify(remaining));
+      return remaining;
+    });
+    addAuditLog('Admin', 'ADMIN', 'DELETE_IMPORT_BATCH', `Deleted import batch ${batchId}`, null, null);
   };
 
   const addMarketFeedback = (feedbackData) => {
@@ -2167,10 +2277,11 @@ export const DataProvider = ({ children }) => {
         isMarketerDayActive,
         visits, addShopVisit,
         shopPhotos, setShopPhotos, addShopPhoto, deleteShopPhoto,
-        orders, addOrder, updateOrder, updateOrderSyncStatus,
-        collections, addCollection, updateCollection,
+        orders, addOrder, updateOrder, updateOrderSyncStatus, deleteOrder,
+        collections, addCollection, updateCollection, deleteCollection,
         handovers, addHandover,
-        returns, addReturn, updateReturn,
+        returns, addReturn, updateReturn, deleteReturn,
+        deleteImportBatch,
         complaints, addComplaint, updateComplaintStatus,
         followups, addFollowup,
         marketFeedbacks, addMarketFeedback,
