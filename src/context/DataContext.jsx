@@ -70,6 +70,12 @@ export const DataProvider = ({ children }) => {
     return s ? JSON.parse(s) : [];
   });
 
+  // Permanent Route History / Audit Log
+  const [routeHistory, setRouteHistory] = useState(() => {
+    const s = localStorage.getItem('PATEL_ROUTE_HISTORY');
+    return s ? JSON.parse(s) : [];
+  });
+
   const [shops, setShops] = useState(() => {
     const s = localStorage.getItem('PATEL_SHOPS');
     return s ? JSON.parse(s) : INITIAL_SHOPS;
@@ -222,6 +228,7 @@ export const DataProvider = ({ children }) => {
   useEffect(() => { localStorage.setItem('PATEL_MARKETERS', JSON.stringify(marketers)); }, [marketers]);
   useEffect(() => { localStorage.setItem('PATEL_WEEKLY_ROUTES', JSON.stringify(weeklyRoutes)); }, [weeklyRoutes]);
   useEffect(() => { localStorage.setItem('PATEL_TEMP_ASSIGNMENTS', JSON.stringify(tempAssignments)); }, [tempAssignments]);
+  useEffect(() => { localStorage.setItem('PATEL_ROUTE_HISTORY', JSON.stringify(routeHistory)); }, [routeHistory]);
   useEffect(() => { localStorage.setItem('PATEL_SHOPS', JSON.stringify(shops)); }, [shops]);
   useEffect(() => { localStorage.setItem('PATEL_LEADS', JSON.stringify(leads)); }, [leads]);
   useEffect(() => { localStorage.setItem('PATEL_TARGETS', JSON.stringify(targets)); }, [targets]);
@@ -286,8 +293,9 @@ export const DataProvider = ({ children }) => {
           unsubs.push(subscribeToCollection('connectedMarkets', (items) => mergeItems(items, setConnectedMarkets, 'PATEL_CONNECTED_MARKETS')));
           unsubs.push(subscribeToCollection('checkIns', (items) => mergeItems(items, setCheckIns, 'PATEL_CHECKINS')));
           unsubs.push(subscribeToCollection('targets', (items) => mergeItems(items, setTargets, 'PATEL_TARGETS')));
-          unsubs.push(subscribeToCollection('importBatches', (items) => mergeItems(items, setImportBatches, 'PATEL_IMPORT_BATCHES')));
-          unsubs.push(subscribeToCollection('followups', (items) => mergeItems(items, setFollowups, 'PATEL_FOLLOWUPS')));
+          unsubs.push(subscribeToCollection('weeklyRoutes', (items) => mergeItems(items, setWeeklyRoutes, 'PATEL_WEEKLY_ROUTES')));
+          unsubs.push(subscribeToCollection('tempAssignments', (items) => mergeItems(items, setTempAssignments, 'PATEL_TEMP_ASSIGNMENTS')));
+          unsubs.push(subscribeToCollection('routeHistory', (items) => mergeItems(items, setRouteHistory, 'PATEL_ROUTE_HISTORY')));
           unsubs.push(subscribeToCollection('complaints', (items) => mergeItems(items, setComplaints, 'PATEL_COMPLAINTS')));
           unsubs.push(
             subscribeToCollection('liveLocations', (items) => {
@@ -372,28 +380,58 @@ export const DataProvider = ({ children }) => {
   };
 
   // getTodayMarket: returns the marketer's assigned market for a given date.
-  // Now also returns routeId, connectedMarketId when available.
+  // Prioritizes active date overrides / substitute assignments before falling back to weekly recurring route.
   const getTodayMarket = (marketerId, dateStr = getFormattedDate()) => {
-    const temp = tempAssignments.find(t => t.marketerId === marketerId && t.date === dateStr);
+    // 1. Check active single-day temporary assignment / override / substitute for this marketer on dateStr
+    const temp = tempAssignments.find(
+      (t) => (t.marketerId === marketerId || t.assignedMarketerId === marketerId) &&
+        (t.date === dateStr || t.assignmentDate === dateStr) &&
+        t.status !== 'Revoked' && t.status !== 'Cancelled'
+    );
+
     if (temp) {
-      const marketObj = markets.find(m => m.id === temp.marketId);
+      const marketObj = markets.find((m) => m.id === temp.marketId);
+      const isSubstitute = Boolean(temp.isSubstitute);
+      const isAbsent = Boolean(temp.isAbsent);
+
       return {
         marketId: temp.marketId,
         marketName: temp.marketName || (marketObj ? marketObj.name : 'Assigned Market'),
         routeId: temp.routeId || null,
         connectedMarketId: temp.connectedMarketId || null,
         connectedMarketName: temp.connectedMarketName || null,
-        routeType: 'Temporary Assignment',
+        routeType: isSubstitute
+          ? 'Substitute Route'
+          : isAbsent
+          ? 'Marked Absent'
+          : 'Temporary Override',
+        isOverride: true,
+        isSubstitute,
+        isAbsent,
+        substituteMarketerId: temp.substituteMarketerId || null,
+        substituteMarketerName: temp.substituteMarketerName || null,
+        absentMarketerId: temp.absentMarketerId || null,
+        absentMarketerName: temp.absentMarketerName || null,
+        startTime: temp.startTime || '09:45 AM',
+        endTime: temp.endTime || '06:30 PM',
+        priority: temp.priority || 'Normal',
         reason: temp.reason || 'Admin Temporary Assignment',
+        notes: temp.notes || '',
         marketObj,
       };
     }
 
+    // 2. Check recurring weekly route schedule
     const dayName = getDayOfWeekName(dateStr);
-    const route = weeklyRoutes.find(r => r.marketerId === marketerId && r.day.toLowerCase() === dayName.toLowerCase());
+    const route = weeklyRoutes.find(
+      (r) => r.marketerId === marketerId &&
+        r.day?.toLowerCase() === dayName.toLowerCase() &&
+        (r.active !== false && r.status !== 'Inactive')
+    );
+
     if (route) {
-      const marketObj = markets.find(m => m.id === route.marketId);
-      const cm = connectedMarkets.find(c => c.id === route.connectedMarketId);
+      const marketObj = markets.find((m) => m.id === route.marketId);
+      const cm = connectedMarkets.find((c) => c.id === route.connectedMarketId);
       return {
         marketId: route.marketId,
         marketName: route.marketName || (marketObj ? marketObj.name : 'Fixed Market'),
@@ -401,8 +439,28 @@ export const DataProvider = ({ children }) => {
         connectedMarketId: route.connectedMarketId || null,
         connectedMarketName: cm ? cm.name : (route.marketName || null),
         routeType: 'Normal Weekly Route',
+        isOverride: false,
         day: dayName,
+        startTime: route.startTime || '09:45 AM',
+        endTime: route.endTime || '06:30 PM',
+        priority: route.priority || 'Normal',
+        notes: route.notes || '',
         marketObj,
+      };
+    }
+
+    // 3. Fallback: primary market assigned to marketer in markets master
+    const primary = markets.find((m) => m.assignedMarketerId === marketerId);
+    if (primary) {
+      return {
+        marketId: primary.id,
+        marketName: primary.name,
+        routeType: 'Primary Assigned Market',
+        isOverride: false,
+        startTime: '09:45 AM',
+        endTime: '06:30 PM',
+        priority: 'Normal',
+        marketObj: primary,
       };
     }
 
@@ -2153,23 +2211,240 @@ export const DataProvider = ({ children }) => {
     return newFb;
   };
 
+  // ======= ROUTE HISTORY / AUDIT LOG HELPER =======
+  const addRouteHistoryLog = (historyEntry) => {
+    const newEntry = {
+      id: `rh-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+      timestamp: new Date().toISOString(),
+      displayDate: getFormattedDate(),
+      displayTime: getFormattedTime(),
+      changedBy: historyEntry.changedBy || 'Admin',
+      marketerId: historyEntry.marketerId || null,
+      marketerName: historyEntry.marketerName || 'All Marketers',
+      oldMarketName: historyEntry.oldMarketName || '—',
+      newMarketName: historyEntry.newMarketName || '—',
+      changeType: historyEntry.changeType || 'Weekly Route Edit',
+      reason: historyEntry.reason || 'General Schedule Update',
+      notes: historyEntry.notes || '',
+      effectiveDate: historyEntry.effectiveDate || getFormattedDate(),
+      ...historyEntry,
+    };
+    setRouteHistory((prev) => [newEntry, ...prev]);
+    persistToFirestore('routeHistory', newEntry.id, newEntry);
+    return newEntry;
+  };
+
+  // ======= RECURRING WEEKLY ROUTES CRUD =======
+  const addWeeklyRoute = (routeData) => {
+    const newRoute = {
+      id: routeData.id || `wr-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
+      marketerId: routeData.marketerId,
+      marketerName: routeData.marketerName || marketers.find((m) => m.id === routeData.marketerId)?.name || '',
+      day: routeData.day, // 'Monday' | 'Tuesday' etc.
+      marketId: routeData.marketId,
+      marketName: routeData.marketName || markets.find((m) => m.id === routeData.marketId)?.name || '',
+      routeId: routeData.routeId || null,
+      connectedMarketId: routeData.connectedMarketId || null,
+      startTime: routeData.startTime || '09:45 AM',
+      endTime: routeData.endTime || '06:30 PM',
+      priority: routeData.priority || 'Normal',
+      notes: routeData.notes || '',
+      active: routeData.active !== undefined ? routeData.active : true,
+      status: routeData.active === false ? 'Inactive' : 'Active',
+      updatedDate: getFormattedDate(),
+      updatedTime: getFormattedTime(),
+      ...routeData,
+    };
+
+    setWeeklyRoutes((prev) => {
+      const filtered = prev.filter(
+        (r) => !(r.marketerId === newRoute.marketerId && r.day?.toLowerCase() === newRoute.day?.toLowerCase())
+      );
+      return [...filtered, newRoute];
+    });
+
+    persistToFirestore('weeklyRoutes', newRoute.id, newRoute);
+    addRouteHistoryLog({
+      changedBy: routeData.changedBy || 'Admin',
+      marketerId: newRoute.marketerId,
+      marketerName: newRoute.marketerName,
+      newMarketName: newRoute.marketName,
+      changeType: 'Weekly Route Customization',
+      reason: routeData.reason || `Scheduled ${newRoute.day} for ${newRoute.marketName}`,
+      notes: newRoute.notes,
+    });
+
+    return newRoute;
+  };
+
+  const updateWeeklyRoute = (routeId, updateData) => {
+    let updated = null;
+    setWeeklyRoutes((prev) =>
+      prev.map((r) => {
+        if (
+          r.id === routeId ||
+          (r.marketerId === updateData.marketerId && r.day?.toLowerCase() === updateData.day?.toLowerCase())
+        ) {
+          updated = {
+            ...r,
+            ...updateData,
+            updatedDate: getFormattedDate(),
+            updatedTime: getFormattedTime(),
+          };
+          return updated;
+        }
+        return r;
+      })
+    );
+
+    if (updated) {
+      persistToFirestore('weeklyRoutes', updated.id || routeId, updated);
+      addRouteHistoryLog({
+        changedBy: updateData.changedBy || 'Admin',
+        marketerId: updated.marketerId,
+        marketerName: updated.marketerName,
+        oldMarketName: updateData.oldMarketName || 'Previous Route',
+        newMarketName: updated.marketName,
+        changeType: 'Weekly Route Customization',
+        reason: updateData.reason || `Updated ${updated.day} Route to ${updated.marketName}`,
+        notes: updated.notes,
+      });
+    }
+    return updated;
+  };
+
+  const deleteWeeklyRoute = (routeId) => {
+    const route = weeklyRoutes.find((r) => r.id === routeId);
+    setWeeklyRoutes((prev) => prev.filter((r) => r.id !== routeId));
+    removeDocFromFirestore('weeklyRoutes', routeId);
+    if (route) {
+      addRouteHistoryLog({
+        changedBy: 'Admin',
+        marketerId: route.marketerId,
+        marketerName: route.marketerName,
+        oldMarketName: route.marketName,
+        newMarketName: 'Off / Removed',
+        changeType: 'Route Deleted',
+        reason: `Removed ${route.day} recurring schedule`,
+      });
+    }
+  };
+
+  const bulkUpdateWeeklyRoutes = (routesList, logReason = 'Bulk Schedule Update') => {
+    if (!Array.isArray(routesList)) return;
+    setWeeklyRoutes(routesList);
+    try {
+      localStorage.setItem('PATEL_WEEKLY_ROUTES', JSON.stringify(routesList));
+    } catch (e) {}
+
+    routesList.forEach((r) => {
+      if (r.id) persistToFirestore('weeklyRoutes', r.id, r);
+    });
+
+    addRouteHistoryLog({
+      changedBy: 'Admin',
+      marketerName: 'Multiple Officers',
+      changeType: 'Route Copy',
+      reason: logReason,
+    });
+  };
+
+  // ======= TEMPORARY ROUTE OVERRIDES & SUBSTITUTES =======
   const addTempAssignment = (assignmentData) => {
     const newAssign = {
-      id: `tmp-${Date.now()}`,
+      id: assignmentData.id || `tmp-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`,
       createdDate: getFormattedDate(),
       createdTime: getFormattedTime(),
-      status: 'Active',
+      status: assignmentData.status || 'Active', // 'Active' | 'Revoked' | 'Completed'
+      startTime: assignmentData.startTime || '09:45 AM',
+      endTime: assignmentData.endTime || '06:30 PM',
+      priority: assignmentData.priority || 'Normal',
+      isSubstitute: Boolean(assignmentData.isSubstitute),
+      substituteMarketerId: assignmentData.substituteMarketerId || null,
+      substituteMarketerName: assignmentData.substituteMarketerName || null,
+      isAbsent: Boolean(assignmentData.isAbsent),
+      absentMarketerId: assignmentData.absentMarketerId || null,
+      absentMarketerName: assignmentData.absentMarketerName || null,
+      notes: assignmentData.notes || '',
       ...assignmentData,
     };
-    setTempAssignments(prev => [newAssign, ...prev]);
+
+    setTempAssignments((prev) => [newAssign, ...prev]);
     persistToFirestore('tempAssignments', newAssign.id, newAssign);
-    addAuditLog(assignmentData.assignedBy || 'Admin', 'ADMIN', 'CREATE_TEMP_ROUTE', `Override for ${assignmentData.date}`, null, newAssign);
+    addAuditLog(
+      assignmentData.assignedBy || 'Admin',
+      'ADMIN',
+      'CREATE_TEMP_ROUTE',
+      `Override for ${assignmentData.date}`,
+      null,
+      newAssign
+    );
+
+    addRouteHistoryLog({
+      changedBy: assignmentData.assignedBy || 'Admin',
+      marketerId: newAssign.marketerId,
+      marketerName: newAssign.marketerName || marketers.find((m) => m.id === newAssign.marketerId)?.name || '',
+      oldMarketName: newAssign.originalMarketName || 'Recurring Route',
+      newMarketName: newAssign.marketName || 'Temporary Market',
+      changeType: newAssign.isSubstitute ? 'Marketer Substitute' : 'Temporary Override',
+      reason: newAssign.reason || (newAssign.isSubstitute ? 'Substitute Assignment' : 'Temporary Override'),
+      notes: newAssign.notes || '',
+      effectiveDate: newAssign.date,
+    });
+
     return newAssign;
   };
 
-  const removeTempAssignment = (id) => {
-    setTempAssignments(prev => prev.filter(t => t.id !== id));
+  const updateTempAssignment = (id, updateData) => {
+    let updated = null;
+    setTempAssignments((prev) =>
+      prev.map((t) => {
+        if (t.id === id) {
+          updated = {
+            ...t,
+            ...updateData,
+            updatedDate: getFormattedDate(),
+            updatedTime: getFormattedTime(),
+          };
+          return updated;
+        }
+        return t;
+      })
+    );
+
+    if (updated) {
+      persistToFirestore('tempAssignments', id, updated);
+      addRouteHistoryLog({
+        changedBy: updateData.assignedBy || 'Admin',
+        marketerId: updated.marketerId,
+        marketerName: updated.marketerName,
+        newMarketName: updated.marketName,
+        changeType: 'Temporary Override',
+        reason: updateData.reason || `Updated Override for ${updated.date}`,
+        notes: updated.notes || '',
+        effectiveDate: updated.date,
+      });
+    }
+    return updated;
+  };
+
+  const removeTempAssignment = (id, revokedReason = 'Override Revoked / Cancelled') => {
+    const existing = tempAssignments.find((t) => t.id === id);
+    setTempAssignments((prev) => prev.filter((t) => t.id !== id));
     removeDocFromFirestore('tempAssignments', id);
+
+    if (existing) {
+      addRouteHistoryLog({
+        changedBy: 'Admin',
+        marketerId: existing.marketerId,
+        marketerName: existing.marketerName,
+        oldMarketName: existing.marketName,
+        newMarketName: 'Reverted to Weekly Route',
+        changeType: 'Temporary Override',
+        reason: revokedReason,
+        effectiveDate: existing.date,
+      });
+    }
   };
 
   // ======= FULL FIREBASE CLOUD MIGRATION & SYNC UTILITY =======
@@ -2297,8 +2572,9 @@ export const DataProvider = ({ children }) => {
         marketRoutes, setMarketRoutes, addMarketRoute, updateMarketRoute, deleteMarketRoute,
         connectedMarkets, setConnectedMarkets, addConnectedMarket, updateConnectedMarket, deleteConnectedMarket,
         marketers, setMarketers,
-        weeklyRoutes, setWeeklyRoutes,
-        tempAssignments, setTempAssignments, addTempAssignment, removeTempAssignment,
+        weeklyRoutes, setWeeklyRoutes, addWeeklyRoute, updateWeeklyRoute, deleteWeeklyRoute, bulkUpdateWeeklyRoutes,
+        tempAssignments, setTempAssignments, addTempAssignment, updateTempAssignment, removeTempAssignment,
+        routeHistory, setRouteHistory, addRouteHistoryLog,
         shops, setShops, addNewShop, updateShop, deleteShop,
         leads, setLeads,
         targets, setTargets, addTarget, updateTarget, deleteTarget,
