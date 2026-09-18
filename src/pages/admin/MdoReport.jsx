@@ -136,55 +136,72 @@ export default function MdoReport() {
   });
 
   // Calculate Active Date Range based on Preset
-  const { fromDateIso, toDateIso, rangeLabel } = useMemo(() => {
+  const { fromDateIso, toDateIso, rangeLabel, isInvalidRange } = useMemo(() => {
     const anchor = new Date(todayIso);
     const pad = (n) => String(n).padStart(2, '0');
     const toIso = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 
     if (datePreset === 'TODAY') {
-      return { fromDateIso: todayIso, toDateIso: todayIso, rangeLabel: `Today (${isoToDisplay(todayIso)})` };
+      return { fromDateIso: todayIso, toDateIso: todayIso, rangeLabel: `Today (${isoToDisplay(todayIso)})`, isInvalidRange: false };
     }
     if (datePreset === 'YESTERDAY') {
       const y = new Date(anchor);
       y.setDate(anchor.getDate() - 1);
       const yIso = toIso(y);
-      return { fromDateIso: yIso, toDateIso: yIso, rangeLabel: `Yesterday (${isoToDisplay(yIso)})` };
+      return { fromDateIso: yIso, toDateIso: yIso, rangeLabel: `Yesterday (${isoToDisplay(yIso)})`, isInvalidRange: false };
     }
     if (datePreset === '7_DAYS') {
       const s = new Date(anchor);
       s.setDate(anchor.getDate() - 6);
       const sIso = toIso(s);
-      return { fromDateIso: sIso, toDateIso: todayIso, rangeLabel: `Last 7 Days (${isoToDisplay(sIso)} to ${isoToDisplay(todayIso)})` };
+      return { fromDateIso: sIso, toDateIso: todayIso, rangeLabel: `Last 7 Days (${isoToDisplay(sIso)} to ${isoToDisplay(todayIso)})`, isInvalidRange: false };
+    }
+    if (datePreset === '30_DAYS') {
+      const d30 = new Date(anchor);
+      d30.setDate(anchor.getDate() - 29);
+      const d30Iso = toIso(d30);
+      return { fromDateIso: d30Iso, toDateIso: todayIso, rangeLabel: `Last 30 Days (${isoToDisplay(d30Iso)} to ${isoToDisplay(todayIso)})`, isInvalidRange: false };
     }
     if (datePreset === 'THIS_MONTH') {
       const start = new Date(anchor.getFullYear(), anchor.getMonth(), 1);
       const sIso = toIso(start);
-      return { fromDateIso: sIso, toDateIso: todayIso, rangeLabel: `This Month (${isoToDisplay(sIso)} to ${isoToDisplay(todayIso)})` };
+      return { fromDateIso: sIso, toDateIso: todayIso, rangeLabel: `This Month (${isoToDisplay(sIso)} to ${isoToDisplay(todayIso)})`, isInvalidRange: false };
     }
     if (datePreset === 'LAST_MONTH') {
       const start = new Date(anchor.getFullYear(), anchor.getMonth() - 1, 1);
       const end = new Date(anchor.getFullYear(), anchor.getMonth(), 0);
       const sIso = toIso(start);
       const eIso = toIso(end);
-      return { fromDateIso: sIso, toDateIso: eIso, rangeLabel: `Last Month (${isoToDisplay(sIso)} to ${isoToDisplay(eIso)})` };
+      return { fromDateIso: sIso, toDateIso: eIso, rangeLabel: `Last Month (${isoToDisplay(sIso)} to ${isoToDisplay(eIso)})`, isInvalidRange: false };
+    }
+    if (datePreset === 'THIS_YEAR') {
+      const start = new Date(anchor.getFullYear(), 0, 1);
+      const sIso = toIso(start);
+      return { fromDateIso: sIso, toDateIso: todayIso, rangeLabel: `This Year (${isoToDisplay(sIso)} to ${isoToDisplay(todayIso)})`, isInvalidRange: false };
     }
     if (datePreset === 'CUSTOM') {
       const f = customFromIso || todayIso;
       const t = customToIso || todayIso;
-      return { fromDateIso: f, toDateIso: t, rangeLabel: `Custom (${isoToDisplay(f)} to ${isoToDisplay(t)})` };
+      const invalid = f > t;
+      return {
+        fromDateIso: f,
+        toDateIso: t,
+        rangeLabel: `Custom Time Period (${isoToDisplay(f)} to ${isoToDisplay(t)})`,
+        isInvalidRange: invalid,
+      };
     }
 
     // Default: Rolling Last 30 Days
     const d30 = new Date(anchor);
     d30.setDate(anchor.getDate() - 29);
     const d30Iso = toIso(d30);
-    return { fromDateIso: d30Iso, toDateIso: todayIso, rangeLabel: `Last 30 Days (${isoToDisplay(d30Iso)} to ${isoToDisplay(todayIso)})` };
+    return { fromDateIso: d30Iso, toDateIso: todayIso, rangeLabel: `Last 30 Days (${isoToDisplay(d30Iso)} to ${isoToDisplay(todayIso)})`, isInvalidRange: false };
   }, [datePreset, customFromIso, customToIso, todayIso]);
 
   // Generate All Consecutive Dates Array in Period (No skipped dates!)
   const periodDatesIso = useMemo(() => {
     const list = [];
-    if (!fromDateIso || !toDateIso) return list;
+    if (!fromDateIso || !toDateIso || fromDateIso > toDateIso) return list;
     const curr = new Date(fromDateIso);
     const end = new Date(toDateIso);
     const pad = (n) => String(n).padStart(2, '0');
@@ -972,13 +989,14 @@ export default function MdoReport() {
               onChange={(e) => setDatePreset(e.target.value)}
               className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 text-slate-800 outline-none focus:ring-2 focus:ring-red-600 font-extrabold"
             >
-              <option value="30_DAYS">Rolling Last 30 Days (Standard)</option>
-              <option value="TODAY">Today Only</option>
-              <option value="YESTERDAY">Yesterday</option>
-              <option value="7_DAYS">Last 7 Days</option>
-              <option value="THIS_MONTH">This Calendar Month</option>
-              <option value="LAST_MONTH">Last Month</option>
-              <option value="CUSTOM">Custom Date Range</option>
+              <option value="TODAY">1. Today</option>
+              <option value="YESTERDAY">2. Yesterday</option>
+              <option value="7_DAYS">3. Last 7 Days</option>
+              <option value="30_DAYS">4. Last 30 Days (Rolling)</option>
+              <option value="THIS_MONTH">5. This Month</option>
+              <option value="LAST_MONTH">6. Last Month</option>
+              <option value="THIS_YEAR">7. This Year</option>
+              <option value="CUSTOM">8. Custom Time Period</option>
             </select>
           </div>
 
@@ -998,37 +1016,56 @@ export default function MdoReport() {
           </div>
         </div>
 
-        {/* Custom Date Pickers (if custom selected) */}
+        {/* Custom Date Pickers (if Custom Time Period selected) */}
         {datePreset === 'CUSTOM' && (
-          <div className="flex flex-wrap items-center gap-3 pt-3 border-t border-slate-100 text-xs font-bold">
-            <span className="text-slate-600 uppercase">Custom Dates:</span>
-            <div className="flex items-center gap-2">
-              <label className="text-slate-500">From:</label>
-              <input
-                type="date"
-                value={customFromIso}
-                onChange={(e) => setCustomFromIso(e.target.value)}
-                className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 font-extrabold"
-              />
+          <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
+            <div className="flex flex-wrap items-center gap-4 text-xs font-bold">
+              <span className="text-slate-700 uppercase tracking-wide flex items-center gap-1">
+                <Calendar className="w-4 h-4 text-blue-600" />
+                <span>Custom Date Range:</span>
+              </span>
+              <div className="flex items-center gap-2">
+                <label className="text-slate-600">From Date:</label>
+                <input
+                  type="date"
+                  value={customFromIso}
+                  onChange={(e) => setCustomFromIso(e.target.value)}
+                  className="bg-white border border-slate-300 rounded-xl px-3 py-2 text-slate-900 font-extrabold outline-none focus:ring-2 focus:ring-red-600 shadow-xs"
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-slate-600">To Date:</label>
+                <input
+                  type="date"
+                  value={customToIso}
+                  onChange={(e) => setCustomToIso(e.target.value)}
+                  className="bg-white border border-slate-300 rounded-xl px-3 py-2 text-slate-900 font-extrabold outline-none focus:ring-2 focus:ring-red-600 shadow-xs"
+                />
+              </div>
+              <div className="text-slate-600 text-xs font-bold">
+                Selected: <span className="text-slate-900 bg-white px-2.5 py-1 rounded-lg border border-slate-200">{isoToDisplay(customFromIso)} to {isoToDisplay(customToIso)}</span>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
-              <label className="text-slate-500">To:</label>
-              <input
-                type="date"
-                value={customToIso}
-                onChange={(e) => setCustomToIso(e.target.value)}
-                className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-1.5 font-extrabold"
-              />
-            </div>
+
+            {/* Validation Error Banner if From Date > To Date */}
+            {isInvalidRange && (
+              <div className="flex items-center gap-2 p-3 bg-red-100 border border-red-300 rounded-xl text-red-800 text-xs font-black animate-shake">
+                <AlertTriangle className="w-4 h-4 shrink-0 text-red-600" />
+                <span>Validation Error: "From Date" ({isoToDisplay(customFromIso)}) cannot be greater than "To Date" ({isoToDisplay(customToIso)}). Please select a valid date range.</span>
+              </div>
+            )}
           </div>
         )}
 
         {/* Active Period Display Banner */}
-        <div className="flex flex-wrap justify-between items-center bg-slate-900 text-amber-300 px-4 py-2.5 rounded-2xl text-xs font-extrabold">
-          <div className="flex items-center gap-2">
-            <Clock className="w-4 h-4 text-amber-400" />
-            <span>Active Range: {rangeLabel}</span>
-            <span className="text-slate-400 text-[11px] font-medium">({periodDatesIso.length} Calendar Days)</span>
+        <div className="flex flex-wrap justify-between items-center bg-slate-900 text-amber-300 px-4 py-3 rounded-2xl text-xs font-extrabold gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
+            <Clock className="w-4 h-4 text-amber-400 shrink-0" />
+            <span className="text-white">Period:</span>
+            <span className="bg-amber-400/20 text-amber-300 px-2.5 py-1 rounded-lg border border-amber-400/30">
+              {isoToDisplay(fromDateIso)} to {isoToDisplay(toDateIso)}
+            </span>
+            <span className="text-slate-400 text-[11px] font-medium">({rangeLabel} • {periodDatesIso.length} Days)</span>
           </div>
           <div className="text-[11px] text-slate-300 font-semibold">
             Viewing: {selectedMdoId === 'ALL' ? 'All MDOs' : marketers.find((m) => m.id === selectedMdoId)?.name} • {selectedMarketId === 'ALL' ? 'All Markets' : markets.find((m) => m.id === selectedMarketId)?.name}
