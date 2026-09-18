@@ -18,6 +18,7 @@ import MarketerPerformance from './MarketerPerformance';
 import MarketerPartyStatement from './MarketerPartyStatement';
 import ChangePasswordModal from '../../components/common/ChangePasswordModal';
 import LogoutBlockedModal from '../../components/common/LogoutBlockedModal';
+import { locationTrackingService } from '../../services/locationTrackingService';
 
 import {
   Play,
@@ -96,6 +97,20 @@ export default function MarketerDashboard({ activeTab, setActiveTab }) {
 
   const isDayActive = Boolean(todayCheckIn && todayCheckIn.status === 'ACTIVE' && !todayCheckIn.endTime && !todayCheckIn.isDayEnded);
   const isDayEnded = Boolean(todayCheckIn && (todayCheckIn.status === 'INACTIVE' || todayCheckIn.endTime || todayCheckIn.isDayEnded));
+
+  // Maintain live location tracking when day is active
+  useEffect(() => {
+    if (isDayActive && currentUser?.id && !locationTrackingService.trackingActive) {
+      locationTrackingService.startTracking({
+        marketerId: currentUser.id,
+        marketerName: currentUser.name,
+        marketId: todayMarket?.marketId || '',
+        marketName: todayMarket?.marketName || 'General',
+        sessionId: todayCheckIn?.currentSessionNumber || 1,
+        initialStatus: 'On Market Visit',
+      });
+    }
+  }, [isDayActive, currentUser, todayMarket, todayCheckIn]);
 
   const todayVisits = visits.filter(
     (v) => v.marketerId === currentUser?.id && (v.date === todayDate || v.createdDate === todayDate)

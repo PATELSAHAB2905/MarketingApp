@@ -4,6 +4,7 @@ import { useData } from '../../context/DataContext';
 import StatusBadge from '../../components/common/StatusBadge';
 import ShopHistoryModal from '../../components/common/ShopHistoryModal';
 import ShopPhotoCapture from '../../components/common/ShopPhotoCapture';
+import { locationTrackingService } from '../../services/locationTrackingService';
 import {
   ArrowLeft,
   Home,
@@ -115,8 +116,16 @@ export default function ShopVisitFlow({
       onClose();
       return;
     }
-    setVisitTime(getFormattedTime());
+    const t = getFormattedTime();
+    setVisitTime(t);
     setVisitStarted(true);
+
+    locationTrackingService.updateStatus({
+      status: 'On Shop Visit',
+      shopId: shop.id,
+      shopName: shop.name,
+      activityDetails: `Visiting ${shop.name}`,
+    });
   };
 
   const handleFinishVisit = () => {
@@ -140,6 +149,14 @@ export default function ShopVisitFlow({
         outcomes: selectedOutcomes.length ? selectedOutcomes : ['Visited'],
         gpsLocation: { lat: shop.lat || 23.7021, lng: shop.lng || 76.7112 },
       });
+
+      locationTrackingService.updateStatus({
+        status: 'On Market Visit',
+        shopId: null,
+        shopName: null,
+        activityDetails: `Completed visit at ${shop.name}`,
+      });
+
       setSubmitting(false);
       onClose();
     }, 400);
@@ -263,7 +280,15 @@ export default function ShopVisitFlow({
               {/* Direct Transaction Buttons */}
               <div className="grid grid-cols-2 gap-2">
                 <button
-                  onClick={onOpenOrder}
+                  onClick={() => {
+                    locationTrackingService.updateStatus({
+                      status: 'Taking Order',
+                      shopId: shop.id,
+                      shopName: shop.name,
+                      activityDetails: `Taking Order at ${shop.name}`,
+                    });
+                    if (onOpenOrder) onOpenOrder();
+                  }}
                   className="p-3 bg-amber-50 border border-amber-200 hover:bg-amber-100 rounded-2xl text-left flex items-center justify-between"
                 >
                   <div>
@@ -273,7 +298,15 @@ export default function ShopVisitFlow({
                   <ShoppingBag className="w-5 h-5 text-amber-700" />
                 </button>
                 <button
-                  onClick={onOpenCollection}
+                  onClick={() => {
+                    locationTrackingService.updateStatus({
+                      status: 'Collecting Payment',
+                      shopId: shop.id,
+                      shopName: shop.name,
+                      activityDetails: `Collecting Payment at ${shop.name}`,
+                    });
+                    if (onOpenCollection) onOpenCollection();
+                  }}
                   className="p-3 bg-emerald-50 border border-emerald-200 hover:bg-emerald-100 rounded-2xl text-left flex items-center justify-between"
                 >
                   <div>
@@ -283,7 +316,15 @@ export default function ShopVisitFlow({
                   <IndianRupee className="w-5 h-5 text-emerald-700" />
                 </button>
                 <button
-                  onClick={onOpenReturn}
+                  onClick={() => {
+                    locationTrackingService.updateStatus({
+                      status: 'Recording Return',
+                      shopId: shop.id,
+                      shopName: shop.name,
+                      activityDetails: `Recording Return at ${shop.name}`,
+                    });
+                    if (onOpenReturn) onOpenReturn();
+                  }}
                   className="p-3 bg-slate-50 border border-slate-200 hover:bg-slate-100 rounded-2xl text-left flex items-center justify-between"
                 >
                   <div>
@@ -293,7 +334,15 @@ export default function ShopVisitFlow({
                   <RotateCcw className="w-5 h-5 text-slate-600" />
                 </button>
                 <button
-                  onClick={onOpenFollowup}
+                  onClick={() => {
+                    locationTrackingService.updateStatus({
+                      status: 'On Shop Visit',
+                      shopId: shop.id,
+                      shopName: shop.name,
+                      activityDetails: `Follow-up at ${shop.name}`,
+                    });
+                    if (onOpenFollowup) onOpenFollowup();
+                  }}
                   className="p-3 bg-blue-50 border border-blue-200 hover:bg-blue-100 rounded-2xl text-left flex items-center justify-between"
                 >
                   <div>

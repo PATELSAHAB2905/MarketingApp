@@ -120,10 +120,15 @@ export const DataProvider = ({ children }) => {
     };
   });
 
-  // 2. Transactions
   const [checkIns, setCheckIns] = useState(() => {
     const s = localStorage.getItem('PATEL_CHECKINS');
     return s ? JSON.parse(s) : [];
+  });
+
+  // Real-time live locations for field tracking
+  const [liveLocations, setLiveLocations] = useState(() => {
+    const s = localStorage.getItem('PATEL_LIVE_LOCATIONS');
+    return s ? JSON.parse(s) : {};
   });
 
   const [visits, setVisits] = useState(() => {
@@ -284,6 +289,23 @@ export const DataProvider = ({ children }) => {
           unsubs.push(subscribeToCollection('importBatches', (items) => mergeItems(items, setImportBatches, 'PATEL_IMPORT_BATCHES')));
           unsubs.push(subscribeToCollection('followups', (items) => mergeItems(items, setFollowups, 'PATEL_FOLLOWUPS')));
           unsubs.push(subscribeToCollection('complaints', (items) => mergeItems(items, setComplaints, 'PATEL_COMPLAINTS')));
+          unsubs.push(
+            subscribeToCollection('liveLocations', (items) => {
+              setLiveLocations((prev) => {
+                const next = { ...prev };
+                items.forEach((loc) => {
+                  if (loc.id || loc.marketerId) {
+                    const key = String(loc.marketerId || loc.id);
+                    next[key] = { ...(next[key] || {}), ...loc };
+                  }
+                });
+                try {
+                  localStorage.setItem('PATEL_LIVE_LOCATIONS', JSON.stringify(next));
+                } catch (e) {}
+                return next;
+              });
+            })
+          );
         } else {
           setIsFirebaseConnected(false);
           setFirebaseSyncStatus('offline');
@@ -2284,6 +2306,7 @@ export const DataProvider = ({ children }) => {
         gstConfig, setGstConfig,
         creditPolicy, setCreditPolicy,
         checkIns, addCheckIn, endMarketerDay, adminEndMarketerDay,
+        liveLocations, setLiveLocations,
         isMarketerDayActive,
         visits, addShopVisit,
         shopPhotos, setShopPhotos, addShopPhoto, deleteShopPhoto,

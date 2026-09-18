@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
+import { locationTrackingService } from '../../services/locationTrackingService';
 import { Award, CheckCircle2, X, TrendingUp, IndianRupee, ShieldCheck, AlertCircle, Clock } from 'lucide-react';
 
 export default function EndOfDayCheckout({ onClose }) {
@@ -65,51 +66,56 @@ export default function EndOfDayCheckout({ onClose }) {
   const totalHandedOver = Number(handedCash) + Number(handedUpi) + Number(handedCheque);
   const difference = totalCollectionValue - totalHandedOver;
 
-  const handleConfirmEndMarket = () => {
+  const handleConfirmEndMarket = async () => {
     if (hasNotStarted) return;
     setSubmitting(true);
 
     const endTimeStr = getFormattedTime();
     setSavedEndTime(endTimeStr);
 
-    setTimeout(() => {
-      // 1. Update existing check-in to INACTIVE with exact End Time
-      endMarketerDay({
-        marketerId: currentUser?.id,
-        date: todayDate,
-        endTime: endTimeStr,
-        remark,
-      });
+    try {
+      // 1. Stop continuous GPS tracking watcher
+      await locationTrackingService.stopTracking({ endRemark: remark });
+    } catch (e) {
+      console.warn('[EndOfDayCheckout] stopTracking error:', e);
+    }
 
-      // 2. Add Handover record
-      addHandover({
-        marketerId: currentUser?.id,
-        marketerName: currentUser?.name,
-        marketId: todayMarket?.marketId || 'mkt-pachore',
-        marketName: todayMarket?.marketName || 'Pachore',
-        date: todayDate,
-        time: endTimeStr,
-        startTime: todayCheckIn?.startTime || todayCheckIn?.createdTime || 'Morning',
-        endTime: endTimeStr,
-        recordedCash,
-        recordedUpi,
-        recordedCheque,
-        totalRecorded: totalCollectionValue,
-        handedCash: Number(handedCash),
-        handedUpi: Number(handedUpi),
-        handedCheque: Number(handedCheque),
-        totalHandedOver,
-        difference,
-        remark,
-        totalOrderKg,
-        totalOrderValue,
-        totalReturns: totalReturnValue,
-        visitsCount: todayVisits.length,
-      });
+    // 2. Update existing check-in to INACTIVE with exact End Time
+    endMarketerDay({
+      marketerId: currentUser?.id,
+      date: todayDate,
+      endTime: endTimeStr,
+      remark,
+    });
 
-      setSubmitting(false);
-      setCompleted(true);
-    }, 400);
+    // 3. Add Handover record
+    addHandover({
+      marketerId: currentUser?.id,
+      marketerName: currentUser?.name,
+      marketId: todayMarket?.marketId || 'mkt-pachore',
+      marketName: todayMarket?.marketName || 'Pachore',
+      date: todayDate,
+      time: endTimeStr,
+      startTime: todayCheckIn?.startTime || todayCheckIn?.createdTime || 'Morning',
+      endTime: endTimeStr,
+      recordedCash,
+      recordedUpi,
+      recordedCheque,
+      totalRecorded: totalCollectionValue,
+      handedCash: Number(handedCash),
+      handedUpi: Number(handedUpi),
+      handedCheque: Number(handedCheque),
+      totalHandedOver,
+      difference,
+      remark,
+      totalOrderKg,
+      totalOrderValue,
+      totalReturns: totalReturnValue,
+      visitsCount: todayVisits.length,
+    });
+
+    setSubmitting(false);
+    setCompleted(true);
   };
 
   return (

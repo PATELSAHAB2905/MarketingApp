@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useData } from '../../context/DataContext';
 import StatusBadge from '../../components/common/StatusBadge';
-import { CheckCircle2, MapPin, Clock, Calendar, Store, Target, IndianRupee, History, ArrowRight, X } from 'lucide-react';
+import { locationTrackingService } from '../../services/locationTrackingService';
+import { CheckCircle2, MapPin, Clock, Calendar, Store, Target, IndianRupee, History, ArrowRight, X, Shield, AlertTriangle } from 'lucide-react';
 
 export default function MorningCheckIn({ onClose }) {
   const { currentUser } = useAuth();
@@ -10,6 +11,7 @@ export default function MorningCheckIn({ onClose }) {
 
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [gpsStatus, setGpsStatus] = useState({ text: 'GPS will be requested upon Start My Day', ok: true });
 
   const dateStr = getFormattedDate();
   const timeStr = getFormattedTime();
@@ -41,22 +43,63 @@ export default function MorningCheckIn({ onClose }) {
     return sum + due;
   }, 0);
 
-  const handleStartDay = () => {
+  const handleStartDay = async () => {
     setLoading(true);
-    setTimeout(() => {
+    setGpsStatus({ text: 'Acquiring device GPS location...', ok: true });
+
+    try {
+      // Start live tracking service (requests real GPS & syncs to Firestore)
+      const trackResult = await locationTrackingService.startTracking({
+        marketerId: currentUser?.id,
+        marketerName: currentUser?.name,
+        marketId: todayMarket?.marketId || 'mkt-pachore',
+        marketName: todayMarket?.marketName || 'Pachore',
+        sessionId: currentSessionNum,
+        initialStatus: 'On Market Visit',
+      });
+
+      const hasGps = trackResult.latitude != null && trackResult.longitude != null;
+
       addCheckIn({
         marketerId: currentUser?.id,
         marketerName: currentUser?.name,
         marketId: todayMarket?.marketId || 'mkt-pachore',
         marketName: todayMarket?.marketName || 'Pachore',
         routeType: todayMarket?.routeType || 'Normal Fixed Route',
-        gpsLocation: { lat: 23.7021, lng: 76.7112, address: 'Patel Sahab Office / Godown, Pachore' },
+        gpsLocation: hasGps
+          ? {
+              lat: trackResult.latitude,
+              lng: trackResult.longitude,
+              accuracy: trackResult.accuracy,
+              verified: true,
+            }
+          : { verified: false, permission: trackResult.locationPermission },
+        targetKg: marketerTarget.dailyKg,
+        targetCollection: marketerTarget.dailyCollection,
+      });
+
+      if (hasGps) {
+        setGpsStatus({ text: `GPS Verified (±${trackResult.accuracy}m)`, ok: true });
+      } else {
+        setGpsStatus({ text: 'Location unavailable or denied (Day started)', ok: false });
+      }
+
+      setLoading(false);
+      setSuccess(true);
+    } catch (e) {
+      console.error('[MorningCheckIn Error]', e);
+      addCheckIn({
+        marketerId: currentUser?.id,
+        marketerName: currentUser?.name,
+        marketId: todayMarket?.marketId || 'mkt-pachore',
+        marketName: todayMarket?.marketName || 'Pachore',
+        routeType: todayMarket?.routeType || 'Normal Fixed Route',
         targetKg: marketerTarget.dailyKg,
         targetCollection: marketerTarget.dailyCollection,
       });
       setLoading(false);
       setSuccess(true);
-    }, 400);
+    }
   };
 
   return (
@@ -98,10 +141,15 @@ export default function MorningCheckIn({ onClose }) {
                 <StatusBadge status={todayMarket?.routeType || 'Normal Fixed Route'} type="route" />
               </div>
 
-              {/* Auto GPS Detection */}
-              <div className="bg-slate-50 border border-slate-200 p-3 rounded-xl flex items-center gap-2.5 text-xs text-slate-600">
+              {/* Real GPS Notice */}
+              <div className="bg-slate-50 border border-slate-200 p-3 rounded-xl flex items-center gap-2.5 text-xs text-slate-700">
                 <MapPin className="w-4 h-4 text-red-600 flex-shrink-0" />
-                <span>GPS Location Auto Detected: <strong>Patel Sahab Office / Godown (Pachore)</strong></span>
+                <div>
+                  <span className="font-bold block">Live GPS Location Verification:</span>
+                  <span className="text-[11px] text-slate-500 font-medium">
+                    {gpsStatus.text}
+                  </span>
+                </div>
               </div>
 
               {/* Today's Target Summary */}
