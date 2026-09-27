@@ -18,18 +18,108 @@ import {
   FileText,
   Layers,
   Filter,
+  CheckCircle2,
+  Sparkles,
+  ShoppingBag,
+  RotateCcw,
 } from 'lucide-react';
 
 export default function ShopsList({ onSelectShop, onAddNewShop, onGoHome }) {
   const { currentUser } = useAuth();
-  const { getFormattedDate, getTodayMarket, getAuthorizedShops, connectedMarkets, getShopOutstanding } = useData();
+  const {
+    getFormattedDate,
+    getTodayMarket,
+    getAuthorizedShops,
+    connectedMarkets,
+    getShopOutstanding,
+    visits = [],
+    orders = [],
+    collections = [],
+    returns = [],
+    followups = [],
+  } = useData();
+
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCm, setSelectedCm] = useState('ALL');
+  const [connectFilter, setConnectFilter] = useState('ALL'); // 'ALL' | 'CONNECTED' | 'PENDING'
   const [historyShop, setHistoryShop] = useState(null);
 
   const todayDate = getFormattedDate();
   const todayMarket = getTodayMarket(currentUser?.id, todayDate);
   const authorizedShops = getAuthorizedShops(currentUser?.id, todayDate);
+
+  // Marketer specific activities for today
+  const todayVisits = useMemo(
+    () => visits.filter((v) => (v.date === todayDate || v.createdDate === todayDate) && (v.marketerId === currentUser?.id || currentUser?.role === 'ADMIN')),
+    [visits, todayDate, currentUser]
+  );
+  const todayOrders = useMemo(
+    () => orders.filter((o) => (o.date === todayDate || o.createdDate === todayDate) && (o.marketerId === currentUser?.id || currentUser?.role === 'ADMIN')),
+    [orders, todayDate, currentUser]
+  );
+  const todayCollections = useMemo(
+    () => collections.filter((c) => (c.date === todayDate || c.createdDate === todayDate) && (c.marketerId === currentUser?.id || currentUser?.role === 'ADMIN')),
+    [collections, todayDate, currentUser]
+  );
+  const todayReturns = useMemo(
+    () => returns.filter((r) => (r.date === todayDate || r.createdDate === todayDate) && (r.marketerId === currentUser?.id || currentUser?.role === 'ADMIN')),
+    [returns, todayDate, currentUser]
+  );
+  const todayFollowups = useMemo(
+    () => followups.filter((f) => (f.date === todayDate || f.createdDate === todayDate) && (f.marketerId === currentUser?.id || currentUser?.role === 'ADMIN')),
+    [followups, todayDate, currentUser]
+  );
+
+  // Map of shopId / shopName -> interaction summary for today
+  const shopInteractionMap = useMemo(() => {
+    const map = new Map();
+
+    const addAction = (shopId, shopName, actionLabel, actionType) => {
+      const key = (shopId || shopName || '').trim().toLowerCase();
+      if (!key) return;
+      if (!map.has(key)) {
+        map.set(key, { isConnected: true, actions: [] });
+      }
+      const entry = map.get(key);
+      if (!entry.actions.some((a) => a.label === actionLabel)) {
+        entry.actions.push({ label: actionLabel, type: actionType });
+      }
+    };
+
+    todayVisits.forEach((v) => {
+      const outcomeText = Array.isArray(v.outcomes) ? v.outcomes.join(', ') : (v.outcomes || 'Visited');
+      addAction(v.shopId, v.shopName, `Visit: ${outcomeText}`, 'visit');
+    });
+
+    todayOrders.forEach((o) => {
+      addAction(o.shopId, o.shopName, `Order: ${o.totalKg || 0} KG (₹${Number(o.grandTotal || o.totalValue || 0).toLocaleString('en-IN')})`, 'order');
+    });
+
+    todayCollections.forEach((c) => {
+      addAction(c.shopId, c.shopName, `Coll: ₹${Number(c.amount || 0).toLocaleString('en-IN')} (${c.paymentMode || 'Cash'})`, 'collection');
+    });
+
+    todayReturns.forEach((r) => {
+      addAction(r.shopId, r.shopName, `Return: ₹${Number(r.returnValue || 0).toLocaleString('en-IN')}`, 'return');
+    });
+
+    todayFollowups.forEach((f) => {
+      addAction(f.shopId, f.shopName, `Follow-up: ${f.reason || 'General'}`, 'followup');
+    });
+
+    return map;
+  }, [todayVisits, todayOrders, todayCollections, todayReturns, todayFollowups]);
+
+  // Counts
+  const connectedCount = useMemo(() => {
+    return authorizedShops.filter((s) => {
+      const kId = (s.id || '').trim().toLowerCase();
+      const kName = (s.name || '').trim().toLowerCase();
+      return (kId && shopInteractionMap.has(kId)) || (kName && shopInteractionMap.has(kName));
+    }).length;
+  }, [authorizedShops, shopInteractionMap]);
+
+  const pendingCount = Math.max(0, authorizedShops.length - connectedCount);
 
   // Get all connected markets associated with the authorized shops / current route
   const availableCms = useMemo(() => {
@@ -50,7 +140,7 @@ export default function ShopsList({ onSelectShop, onAddNewShop, onGoHome }) {
     return Array.from(map.values());
   }, [authorizedShops]);
 
-  // Filter shops by Search and Connected Market
+  // Filter shops by Search, Connected Market, and Connect Status
   const filteredShops = authorizedShops.filter((s) => {
     const q = searchQuery.toLowerCase();
     const matchSearch =
@@ -67,6 +157,13 @@ export default function ShopsList({ onSelectShop, onAddNewShop, onGoHome }) {
       const cmKey = (s.connectedMarketId || cmName || 'general').toLowerCase().trim();
       if (cmKey !== selectedCm && s.connectedMarketId !== selectedCm) return false;
     }
+
+    const kId = (s.id || '').trim().toLowerCase();
+    const kName = (s.name || '').trim().toLowerCase();
+    const isConn = (kId && shopInteractionMap.has(kId)) || (kName && shopInteractionMap.has(kName));
+
+    if (connectFilter === 'CONNECTED' && !isConn) return false;
+    if (connectFilter === 'PENDING' && isConn) return false;
 
     return true;
   });
@@ -101,7 +198,7 @@ export default function ShopsList({ onSelectShop, onAddNewShop, onGoHome }) {
             <span>{todayMarket?.marketName || 'PACHORE'} SHOPS ({filteredShops.length})</span>
           </h2>
           <p className="text-xs text-slate-500 font-medium">
-            Select a Connected Market below or click a shop to start order/visit
+            Auto-connects when you take order, collection, return or follow-up
           </p>
         </div>
         {onAddNewShop && (
@@ -115,7 +212,52 @@ export default function ShopsList({ onSelectShop, onAddNewShop, onGoHome }) {
         )}
       </div>
 
-      {/* 2. CONNECTED MARKETS FILTER CHIPS */}
+      {/* 2. AUTO-CONNECT STATUS FILTER PILLS */}
+      <div className="grid grid-cols-3 gap-2 bg-slate-100 p-1.5 rounded-2xl border border-slate-200 text-xs font-black">
+        <button
+          onClick={() => setConnectFilter('ALL')}
+          className={`py-2 px-2 rounded-xl transition-all flex flex-col items-center justify-center gap-0.5 ${
+            connectFilter === 'ALL'
+              ? 'bg-white text-slate-950 shadow-xs border border-slate-200'
+              : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          <span className="text-[10px] uppercase font-bold text-slate-500">All Shops</span>
+          <span className="text-sm font-black">{authorizedShops.length}</span>
+        </button>
+
+        <button
+          onClick={() => setConnectFilter('CONNECTED')}
+          className={`py-2 px-2 rounded-xl transition-all flex flex-col items-center justify-center gap-0.5 ${
+            connectFilter === 'CONNECTED'
+              ? 'bg-emerald-600 text-white shadow-xs'
+              : 'text-emerald-700 hover:text-emerald-800 bg-emerald-50/50'
+          }`}
+        >
+          <span className="text-[10px] uppercase font-bold flex items-center gap-1">
+            <CheckCircle2 className="w-3 h-3" />
+            <span>Connected</span>
+          </span>
+          <span className="text-sm font-black">{connectedCount}</span>
+        </button>
+
+        <button
+          onClick={() => setConnectFilter('PENDING')}
+          className={`py-2 px-2 rounded-xl transition-all flex flex-col items-center justify-center gap-0.5 ${
+            connectFilter === 'PENDING'
+              ? 'bg-amber-600 text-white shadow-xs'
+              : 'text-amber-800 hover:text-amber-900 bg-amber-50/50'
+          }`}
+        >
+          <span className="text-[10px] uppercase font-bold flex items-center gap-1">
+            <Clock className="w-3 h-3" />
+            <span>Pending</span>
+          </span>
+          <span className="text-sm font-black">{pendingCount}</span>
+        </button>
+      </div>
+
+      {/* 3. CONNECTED MARKETS FILTER CHIPS */}
       {availableCms.length > 0 && (
         <div className="space-y-1.5">
           <div className="flex items-center gap-1.5 text-[11px] font-bold text-slate-500 uppercase">
@@ -184,86 +326,123 @@ export default function ShopsList({ onSelectShop, onAddNewShop, onGoHome }) {
           <Store className="w-10 h-10 text-slate-300 mx-auto" />
           <p className="text-sm font-bold text-slate-700">No Shops Found</p>
           <p className="text-xs text-slate-400">
-            No authorized shops found for the selected filter "{selectedCm === 'ALL' ? searchQuery : selectedCm}".
+            No authorized shops found for the selected filter "{connectFilter !== 'ALL' ? connectFilter : selectedCm}".
           </p>
         </div>
       ) : (
         <div className="space-y-3">
-          {filteredShops.map((shop) => (
-            <div
-              key={shop.id}
-              onClick={() => onSelectShop && onSelectShop(shop)}
-              className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs hover:shadow-md transition-all cursor-pointer active:scale-99 space-y-3"
-            >
-              <div className="flex justify-between items-start">
-                <div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className="font-extrabold text-slate-900 text-base">{shop.name}</h3>
-                    <StatusBadge status={shop.status || 'Customer'} type="shop" />
+          {filteredShops.map((shop) => {
+            const kId = (shop.id || '').trim().toLowerCase();
+            const kName = (shop.name || '').trim().toLowerCase();
+            const connectInfo = (kId && shopInteractionMap.get(kId)) || (kName && shopInteractionMap.get(kName)) || null;
+            const isConnectedToday = Boolean(connectInfo);
+
+            return (
+              <div
+                key={shop.id}
+                onClick={() => onSelectShop && onSelectShop(shop)}
+                className={`bg-white p-4 rounded-2xl border shadow-xs hover:shadow-md transition-all cursor-pointer active:scale-99 space-y-3 ${
+                  isConnectedToday ? 'border-emerald-300 ring-1 ring-emerald-200/60' : 'border-slate-200'
+                }`}
+              >
+                {/* AUTO-CONNECT STATUS STRIP */}
+                {isConnectedToday ? (
+                  <div className="bg-emerald-50 border border-emerald-200/90 text-emerald-950 px-3 py-1.5 rounded-xl text-xs flex items-center justify-between flex-wrap gap-1">
+                    <div className="flex items-center gap-1.5 font-black text-emerald-800">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                      <span>CONNECTED TODAY</span>
+                    </div>
+                    <div className="flex items-center gap-1 flex-wrap">
+                      {connectInfo.actions.map((act, i) => (
+                        <span
+                          key={i}
+                          className="bg-white border border-emerald-300 text-emerald-900 px-2 py-0.5 rounded-md text-[10px] font-bold"
+                        >
+                          {act.label}
+                        </span>
+                      ))}
+                    </div>
                   </div>
-                  <p className="text-xs text-slate-500 font-medium mt-0.5">
-                    Owner: <strong>{shop.owner || '—'}</strong> • {shop.mobile || '—'}
-                  </p>
-                  {(shop.connectedMarketName || shop.address) && (
-                    <p className="text-[11px] text-amber-900 font-semibold flex items-center gap-1 mt-0.5">
-                      <MapPin className="w-3 h-3 text-red-600 flex-shrink-0" />
-                      <span>{shop.connectedMarketName || shop.address}</span>
+                ) : (
+                  <div className="bg-slate-50 border border-slate-200 text-slate-600 px-2.5 py-1 rounded-xl text-[11px] font-semibold flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-slate-300" />
+                      <span>Pending Visit / Action</span>
+                    </span>
+                    <span className="text-[10px] text-slate-400 font-bold">Tap to interact →</span>
+                  </div>
+                )}
+
+                <div className="flex justify-between items-start">
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="font-extrabold text-slate-900 text-base">{shop.name}</h3>
+                      <StatusBadge status={shop.status || 'Customer'} type="shop" />
+                    </div>
+                    <p className="text-xs text-slate-500 font-medium mt-0.5">
+                      Owner: <strong>{shop.owner || '—'}</strong> • {shop.mobile || '—'}
                     </p>
-                  )}
+                    {(shop.connectedMarketName || shop.address) && (
+                      <p className="text-[11px] text-amber-900 font-semibold flex items-center gap-1 mt-0.5">
+                        <MapPin className="w-3 h-3 text-red-600 flex-shrink-0" />
+                        <span>{shop.connectedMarketName || shop.address}</span>
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setHistoryShop(shop);
+                      }}
+                      className="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-950 rounded-xl text-xs font-black flex items-center gap-1 transition-all border border-amber-200 shadow-2xs"
+                      title="View Statement & History"
+                    >
+                      <FileText className="w-3.5 h-3.5 text-amber-700" />
+                      <span>📜 Statement</span>
+                    </button>
+                    <ChevronRight className="w-5 h-5 text-slate-400 flex-shrink-0" />
+                  </div>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setHistoryShop(shop);
-                    }}
-                    className="px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-950 rounded-xl text-xs font-black flex items-center gap-1 transition-all border border-amber-200 shadow-2xs"
-                    title="View Statement & History"
-                  >
-                    <FileText className="w-3.5 h-3.5 text-amber-700" />
-                    <span>📜 Statement</span>
-                  </button>
-                  <ChevronRight className="w-5 h-5 text-slate-400 flex-shrink-0" />
+                {/* Warnings & Metrics */}
+                {shop.highReturnWarning && (
+                  <div className="bg-amber-50 border border-amber-200 text-amber-900 px-2.5 py-1 rounded-xl text-[11px] font-bold flex items-center gap-1.5">
+                    <AlertTriangle className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
+                    <span>⚠ HIGH RETURN SHOP (Check reason before taking order)</span>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-100 text-xs">
+                  <div>
+                    <span className="text-slate-400 block text-[10px] uppercase font-bold">Last Order</span>
+                    <span className="font-bold text-slate-800">
+                      {shop.lastOrderKg ? `${shop.lastOrderKg} KG` : 'No Orders'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block text-[10px] uppercase font-bold">Outstanding</span>
+                    {(() => {
+                      const shopDue = getShopOutstanding ? getShopOutstanding(shop) : (shop.outstanding || 0);
+                      return (
+                        <span className={`font-bold ${shopDue > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                          ₹{shopDue.toLocaleString('en-IN')}
+                        </span>
+                      );
+                    })()}
+                  </div>
+                  <div>
+                    <span className="text-slate-400 block text-[10px] uppercase font-bold">Last Visit</span>
+                    <span className={`font-semibold ${isConnectedToday ? 'text-emerald-700 font-bold' : 'text-slate-600'}`}>
+                      {isConnectedToday ? 'Today' : (shop.lastVisitDate || 'Never')}
+                    </span>
+                  </div>
                 </div>
               </div>
-
-              {/* Warnings & Metrics */}
-              {shop.highReturnWarning && (
-                <div className="bg-amber-50 border border-amber-200 text-amber-900 px-2.5 py-1 rounded-xl text-[11px] font-bold flex items-center gap-1.5">
-                  <AlertTriangle className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
-                  <span>⚠ HIGH RETURN SHOP (Check reason before taking order)</span>
-                </div>
-              )}
-
-              <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-100 text-xs">
-                <div>
-                  <span className="text-slate-400 block text-[10px] uppercase font-bold">Last Order</span>
-                  <span className="font-bold text-slate-800">
-                    {shop.lastOrderKg ? `${shop.lastOrderKg} KG` : 'No Orders'}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-slate-400 block text-[10px] uppercase font-bold">Outstanding</span>
-                  {(() => {
-                    const shopDue = getShopOutstanding ? getShopOutstanding(shop) : (shop.outstanding || 0);
-                    return (
-                      <span className={`font-bold ${shopDue > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
-                        ₹{shopDue.toLocaleString('en-IN')}
-                      </span>
-                    );
-                  })()}
-                </div>
-                <div>
-                  <span className="text-slate-400 block text-[10px] uppercase font-bold">Last Visit</span>
-                  <span className="font-semibold text-slate-600">
-                    {shop.lastVisitDate || 'Never'}
-                  </span>
-                </div>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

@@ -139,8 +139,15 @@ export default function MarketerDashboard({ activeTab, setActiveTab }) {
   const totalReturnKg = todayReturns.reduce((sum, r) => sum + (r.returnKg ?? r.quantity ?? 0), 0);
   const totalReturnValue = todayReturns.reduce((sum, r) => sum + (r.returnValue || 0), 0);
 
-  // Automatic Customer Connected count logic
-  const customersConnectedCount = todayVisits.length;
+  // Automatic Customer Connected count logic (Visits + Orders + Collections + Returns + Follow-ups)
+  const connectedShopKeys = new Set([
+    ...todayVisits.map((v) => v.shopId || v.shopName).filter(Boolean),
+    ...todayOrders.map((o) => o.shopId || o.shopName).filter(Boolean),
+    ...todayCollections.map((c) => c.shopId || c.shopName).filter(Boolean),
+    ...todayReturns.map((r) => r.shopId || r.shopName).filter(Boolean),
+    ...todayFollowups.map((f) => f.shopId || f.shopName).filter(Boolean),
+  ]);
+  const customersConnectedCount = Math.max(connectedShopKeys.size, todayVisits.length);
 
   // Target metrics for marketer
   const marketerTarget = targets.find((t) => t.marketerId === currentUser?.id) || {

@@ -66,6 +66,15 @@ export default function EndOfDayCheckout({ onClose }) {
   const totalHandedOver = Number(handedCash) + Number(handedUpi) + Number(handedCheque);
   const difference = totalCollectionValue - totalHandedOver;
 
+  const todayConnectedShopKeys = new Set([
+    ...todayVisits.map(v => v.shopId || v.shopName).filter(Boolean),
+    ...todayOrders.map(o => o.shopId || o.shopName).filter(Boolean),
+    ...todayCollections.map(c => c.shopId || c.shopName).filter(Boolean),
+    ...todayReturns.map(r => r.shopId || r.shopName).filter(Boolean),
+    ...todayFollowups.map(f => f.shopId || f.shopName).filter(Boolean),
+  ]);
+  const connectedVisitsCount = Math.max(todayConnectedShopKeys.size, todayVisits.length);
+
   const handleConfirmEndMarket = async () => {
     if (hasNotStarted) return;
     setSubmitting(true);
@@ -111,7 +120,7 @@ export default function EndOfDayCheckout({ onClose }) {
       totalOrderKg,
       totalOrderValue,
       totalReturns: totalReturnValue,
-      visitsCount: todayVisits.length,
+      visitsCount: connectedVisitsCount,
     });
 
     setSubmitting(false);

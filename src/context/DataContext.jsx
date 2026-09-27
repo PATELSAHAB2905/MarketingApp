@@ -1396,6 +1396,108 @@ export const DataProvider = ({ children }) => {
     return Boolean(chk && chk.status === 'ACTIVE' && !chk.endTime && !chk.isDayEnded);
   };
 
+  // ======= AUTO-CONNECT SHOP INTERACTION ENGINE =======
+  // Automatically logs/links a visit/customer-connect entry whenever an Order, Collection, Return, Follow-up, Complaint, or Photo is executed
+  const ensureShopConnected = ({
+    shopId,
+    shopName,
+    marketerId,
+    marketerName,
+    marketId,
+    marketName,
+    actionType = 'Customer Connected',
+    details = '',
+    time,
+    gpsLocation,
+  }) => {
+    if (!shopId && !shopName) return;
+
+    const todayDate = getFormattedDate();
+    const actionTime = time || getFormattedTime();
+    const targetShop = shops.find((s) => s.id === shopId || s.name === shopName);
+    const resolvedShopId = shopId || targetShop?.id || '';
+    const resolvedShopName = shopName || targetShop?.name || 'Shop';
+    const resolvedMarketId = marketId || targetShop?.marketId || '';
+    const resolvedMarketName = marketName || targetShop?.marketName || '';
+
+    // Check if a visit already exists for today by this marketer for this shop
+    setVisits((prev) => {
+      const existingIdx = prev.findIndex(
+        (v) =>
+          v.marketerId === marketerId &&
+          (v.shopId === resolvedShopId || (v.shopName && v.shopName === resolvedShopName)) &&
+          (v.date === todayDate || v.createdDate === todayDate)
+      );
+
+      if (existingIdx !== -1) {
+        const existing = prev[existingIdx];
+        const prevOutcomes = Array.isArray(existing.outcomes) ? existing.outcomes : ['Visited'];
+        const updatedOutcomes = prevOutcomes.includes(actionType)
+          ? prevOutcomes
+          : [...prevOutcomes, actionType];
+
+        const updatedVisit = {
+          ...existing,
+          outcomes: updatedOutcomes,
+          updatedDate: todayDate,
+          updatedTime: actionTime,
+          lastAction: actionType,
+          lastActionDetails: details || existing.lastActionDetails,
+        };
+
+        persistToFirestore('visits', existing.id, updatedVisit);
+        const copy = [...prev];
+        copy[existingIdx] = updatedVisit;
+        return copy;
+      } else {
+        const newVisit = {
+          id: `vst-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+          shopId: resolvedShopId,
+          shopName: resolvedShopName,
+          marketId: resolvedMarketId,
+          marketName: resolvedMarketName,
+          marketerId: marketerId || '',
+          marketerName: marketerName || 'Marketer',
+          date: todayDate,
+          time: actionTime,
+          createdDate: todayDate,
+          createdTime: actionTime,
+          updatedDate: todayDate,
+          updatedTime: actionTime,
+          outcomes: [actionType],
+          details: details || '',
+          autoConnected: true,
+          source: 'AUTO_ACTION',
+          gpsLocation: gpsLocation || { lat: targetShop?.lat || 23.7021, lng: targetShop?.lng || 76.7112 },
+          syncStatus: isOfflineMode ? 'Pending Sync' : 'Synced',
+        };
+
+        persistToFirestore('visits', newVisit.id, newVisit);
+        return [newVisit, ...prev];
+      }
+    });
+
+    // Update shop's last interaction timestamps and activity
+    setShops((prev) =>
+      prev.map((s) => {
+        if (s.id === resolvedShopId || (s.name && s.name === resolvedShopName)) {
+          const updatedShop = {
+            ...s,
+            lastVisitDate: todayDate,
+            lastConnectedDate: todayDate,
+            lastActivityType: actionType,
+            lastActivityTime: actionTime,
+            updatedDate: todayDate,
+            updatedTime: actionTime,
+          };
+          persistToFirestore('shops', s.id, updatedShop);
+          return updatedShop;
+        }
+        return s;
+      })
+    );
+  };
+
   const addShopVisit = (visitData) => {
     // Strict Workday Validation: Block Marketers from logging visits without Start My Day
     if (visitData.marketerId && visitData.role !== 'ADMIN' && !isMarketerDayActive(visitData.marketerId)) {
@@ -1490,6 +1592,17 @@ export const DataProvider = ({ children }) => {
       { shopId: photoData.shopId, photoType: newPhoto.photoType, fileSizeKb: newPhoto.fileSizeKb }
     );
 
+    // Auto-Connect Shop Interaction
+    ensureShopConnected({
+      shopId: photoData.shopId,
+      shopName: photoData.shopName,
+      marketerId: photoData.marketerId,
+      marketerName: photoData.marketerName,
+      actionType: 'Photo Captured',
+      details: photoData.photoType || 'Shop Visit Photo',
+      time: photoData.time,
+    });
+
     return newPhoto;
   };
 
@@ -1547,6 +1660,8 @@ export const DataProvider = ({ children }) => {
           status: isLead ? 'Customer' : (s.status || 'Customer'),
           lastOrderKg: orderData.totalKg || 0,
           lastOrderDate: getFormattedDate(),
+          lastVisitDate: getFormattedDate(),
+          lastConnectedDate: getFormattedDate(),
           outstanding: (s.outstanding || 0) + (orderData.grandTotal || orderData.totalValue || 0),
           updatedDate: getFormattedDate(),
           updatedTime: getFormattedTime(),
@@ -1558,6 +1673,21 @@ export const DataProvider = ({ children }) => {
     }));
 
     addAuditLog(orderData.marketerName, 'MARKETER', 'CREATE_ORDER', `Order ${newOrder.id}`, null, newOrder);
+
+    // Auto-Connect Shop Interaction
+    ensureShopConnected({
+      shopId: orderData.shopId,
+      shopName: orderData.shopName,
+      marketerId: orderData.marketerId,
+      marketerName: orderData.marketerName,
+      marketId: orderData.marketId,
+      marketName: orderData.marketName,
+      actionType: 'Order Placed',
+      details: `Order: ${orderData.totalKg || 0} KG (₹${Number(orderData.grandTotal || orderData.totalValue || 0).toLocaleString('en-IN')})`,
+      time: orderData.time,
+      gpsLocation: orderData.gpsLocation,
+    });
+
     return newOrder;
   };
 
@@ -1664,6 +1794,8 @@ export const DataProvider = ({ children }) => {
           ...s,
           outstanding: Math.max(0, (s.outstanding || 0) - collectionData.amount),
           lastCollectionDate: getFormattedDate(),
+          lastVisitDate: getFormattedDate(),
+          lastConnectedDate: getFormattedDate(),
           updatedDate: getFormattedDate(),
           updatedTime: getFormattedTime(),
         };
@@ -1674,6 +1806,21 @@ export const DataProvider = ({ children }) => {
     }));
 
     addAuditLog(collectionData.marketerName, 'MARKETER', 'RECORD_COLLECTION', `Collection ${newColl.id}`, null, newColl);
+
+    // Auto-Connect Shop Interaction
+    ensureShopConnected({
+      shopId: collectionData.shopId,
+      shopName: collectionData.shopName,
+      marketerId: collectionData.marketerId,
+      marketerName: collectionData.marketerName,
+      marketId: collectionData.marketId,
+      marketName: collectionData.marketName,
+      actionType: 'Collection Received',
+      details: `Collection: ₹${Number(collectionData.amount || 0).toLocaleString('en-IN')} (${collectionData.paymentMode || 'Cash'})`,
+      time: collectionData.time,
+      gpsLocation: collectionData.gpsLocation,
+    });
+
     return newColl;
   };
 
@@ -1786,6 +1933,8 @@ export const DataProvider = ({ children }) => {
         const updatedShop = {
           ...s,
           lastReturnDate: getFormattedDate(),
+          lastVisitDate: getFormattedDate(),
+          lastConnectedDate: getFormattedDate(),
           highReturnWarning: true,
           updatedDate: getFormattedDate(),
           updatedTime: getFormattedTime(),
@@ -1797,6 +1946,21 @@ export const DataProvider = ({ children }) => {
     }));
 
     addAuditLog(returnData.marketerName, 'MARKETER', 'RECORD_RETURN', `Return ${newReturn.id}`, null, newReturn);
+
+    // Auto-Connect Shop Interaction
+    ensureShopConnected({
+      shopId: returnData.shopId,
+      shopName: returnData.shopName,
+      marketerId: returnData.marketerId,
+      marketerName: returnData.marketerName,
+      marketId: returnData.marketId,
+      marketName: returnData.marketName,
+      actionType: 'Return Processed',
+      details: `Return: ₹${Number(returnData.returnValue || 0).toLocaleString('en-IN')} (${returnData.returnKg || returnData.quantity || 0} KG)`,
+      time: returnData.time,
+      gpsLocation: returnData.gpsLocation,
+    });
+
     return newReturn;
   };
 
@@ -1859,6 +2023,20 @@ export const DataProvider = ({ children }) => {
     setComplaints(prev => [newComplaint, ...prev]);
     persistToFirestore('complaints', newComplaint.id, newComplaint);
     addAuditLog(complaintData.marketerName, 'MARKETER', 'CREATE_COMPLAINT', `Complaint ${newComplaint.id}`, null, newComplaint);
+
+    // Auto-Connect Shop Interaction
+    ensureShopConnected({
+      shopId: complaintData.shopId,
+      shopName: complaintData.shopName,
+      marketerId: complaintData.marketerId,
+      marketerName: complaintData.marketerName,
+      marketId: complaintData.marketId,
+      marketName: complaintData.marketName,
+      actionType: 'Complaint Logged',
+      details: `Complaint: ${complaintData.complaintType || 'General'}`,
+      time: complaintData.time,
+    });
+
     return newComplaint;
   };
 
@@ -1899,6 +2077,21 @@ export const DataProvider = ({ children }) => {
     };
     setFollowups(prev => [newFollowup, ...prev]);
     persistToFirestore('followups', newFollowup.id, newFollowup);
+
+    // Auto-Connect Shop Interaction
+    ensureShopConnected({
+      shopId: followupData.shopId,
+      shopName: followupData.shopName,
+      marketerId: followupData.marketerId,
+      marketerName: followupData.marketerName,
+      marketId: followupData.marketId,
+      marketName: followupData.marketName,
+      actionType: 'Follow-up Scheduled',
+      details: `Follow-up: ${followupData.reason || 'General'} (${followupData.followUpDate || ''})`,
+      time: followupData.time,
+      gpsLocation: followupData.gpsLocation,
+    });
+
     return newFollowup;
   };
 
@@ -1928,6 +2121,20 @@ export const DataProvider = ({ children }) => {
     setShops(prev => [newShop, ...prev]);
     persistToFirestore('shops', newShop.id, newShop);
     addAuditLog('User', 'USER', 'ADD_SHOP', `Shop ${newShop.name}`, null, newShop);
+
+    if (marketerId) {
+      ensureShopConnected({
+        shopId: newShop.id,
+        shopName: newShop.name,
+        marketerId,
+        marketerName: shopData.createdByName || shopData.marketerName || 'Marketer',
+        marketId: newShop.marketId,
+        marketName: newShop.marketName,
+        actionType: 'New Shop Added',
+        details: `New Shop registered: ${newShop.name}`,
+      });
+    }
+
     return newShop;
   };
 
@@ -2584,7 +2791,7 @@ export const DataProvider = ({ children }) => {
         checkIns, addCheckIn, endMarketerDay, adminEndMarketerDay,
         liveLocations, setLiveLocations,
         isMarketerDayActive,
-        visits, addShopVisit,
+        visits, addShopVisit, ensureShopConnected,
         shopPhotos, setShopPhotos, addShopPhoto, deleteShopPhoto,
         orders, addOrder, updateOrder, updateOrderSyncStatus, deleteOrder,
         collections, addCollection, updateCollection, deleteCollection,

@@ -27,7 +27,7 @@ const pct = (actual, target) => {
 export default function TargetManagement() {
   const {
     marketers, targets, addTarget, updateTarget, deleteTarget,
-    orders, collections, visits, getFormattedDate,
+    orders = [], collections = [], returns = [], followups = [], visits = [], getFormattedDate,
   } = useData();
 
   const [activeTab, setActiveTab] = useState('targets'); // 'targets' | 'actual'
@@ -133,12 +133,24 @@ export default function TargetManagement() {
   const today = getFormattedDate();
 
   const getActuals = (marketerId) => {
-    const todayOrders = orders.filter(o => o.marketerId === marketerId && o.createdDate === today);
-    const todayCollections = collections.filter(c => c.marketerId === marketerId && c.createdDate === today);
-    const todayVisits = visits.filter(v => v.marketerId === marketerId && v.createdDate === today);
+    const todayOrders = orders.filter(o => o.marketerId === marketerId && (o.date === today || o.createdDate === today));
+    const todayCollections = collections.filter(c => c.marketerId === marketerId && (c.date === today || c.createdDate === today));
+    const todayReturns = returns.filter(r => r.marketerId === marketerId && (r.date === today || r.createdDate === today));
+    const todayFollowups = followups.filter(f => f.marketerId === marketerId && (f.date === today || f.createdDate === today));
+    const todayVisits = visits.filter(v => v.marketerId === marketerId && (v.date === today || v.createdDate === today));
+
     const actualKg = todayOrders.reduce((s, o) => s + (o.totalKg || 0), 0);
     const actualCollection = todayCollections.reduce((s, c) => s + (c.amount || 0), 0);
-    const actualVisits = todayVisits.length;
+
+    const connectedKeys = new Set([
+      ...todayVisits.map(v => v.shopId || v.shopName).filter(Boolean),
+      ...todayOrders.map(o => o.shopId || o.shopName).filter(Boolean),
+      ...todayCollections.map(c => c.shopId || c.shopName).filter(Boolean),
+      ...todayReturns.map(r => r.shopId || r.shopName).filter(Boolean),
+      ...todayFollowups.map(f => f.shopId || f.shopName).filter(Boolean),
+    ]);
+
+    const actualVisits = Math.max(connectedKeys.size, todayVisits.length);
     const actualNew = (todayVisits.filter(v => v.isNewShop)).length;
     return { actualKg, actualCollection, actualVisits, actualNew };
   };
