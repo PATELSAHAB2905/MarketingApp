@@ -113,6 +113,7 @@ export default function MarketsRoutes() {
   const [customizeForm, setCustomizeForm] = useState({
     marketerId: '',
     days: ['Monday'],
+    selectedMarketIds: [],
     marketId: '',
     startTime: '09:45 AM',
     endTime: '06:30 PM',
@@ -322,10 +323,21 @@ export default function MarketsRoutes() {
   const handleOpenCustomize = (routeToEdit = null) => {
     if (routeToEdit) {
       setEditingWeeklyRoute(routeToEdit);
+      const mktIds = routeToEdit.marketIds?.length
+        ? routeToEdit.marketIds
+        : routeToEdit.markets?.length
+        ? routeToEdit.markets.map((m) => m.id)
+        : routeToEdit.marketId
+        ? [routeToEdit.marketId]
+        : markets[0]?.id
+        ? [markets[0].id]
+        : [];
+
       setCustomizeForm({
         marketerId: routeToEdit.marketerId,
         days: [routeToEdit.day],
-        marketId: routeToEdit.marketId,
+        selectedMarketIds: mktIds,
+        marketId: mktIds[0] || '',
         startTime: routeToEdit.startTime || '09:45 AM',
         endTime: routeToEdit.endTime || '06:30 PM',
         priority: routeToEdit.priority || 'Normal',
@@ -334,10 +346,12 @@ export default function MarketsRoutes() {
       });
     } else {
       setEditingWeeklyRoute(null);
+      const defaultMktId = markets[0]?.id ? [markets[0].id] : [];
       setCustomizeForm({
         marketerId: marketers[0]?.id || '',
         days: ['Monday'],
-        marketId: markets[0]?.id || '',
+        selectedMarketIds: defaultMktId,
+        marketId: defaultMktId[0] || '',
         startTime: '09:45 AM',
         endTime: '06:30 PM',
         priority: 'Normal',
@@ -350,13 +364,23 @@ export default function MarketsRoutes() {
 
   const handleSaveCustomize = (e) => {
     e.preventDefault();
-    if (!customizeForm.marketerId || !customizeForm.marketId || customizeForm.days.length === 0) {
-      alert('Please select Marketer, Market, and at least one Day.');
+    if (!customizeForm.marketerId || customizeForm.selectedMarketIds.length === 0 || customizeForm.days.length === 0) {
+      alert('Please select Marketer, at least one Market, and at least one Day.');
       return;
     }
 
     const marketerObj = getMarketer(customizeForm.marketerId);
-    const marketObj = getMarket(customizeForm.marketId);
+    const chosenMarketObjs = customizeForm.selectedMarketIds.map((mId, idx) => {
+      const obj = getMarket(mId);
+      return {
+        id: mId,
+        name: obj?.name || 'Market',
+        order: idx + 1,
+      };
+    });
+
+    const primaryMarketId = chosenMarketObjs[0]?.id || '';
+    const primaryMarketName = chosenMarketObjs.map((m) => m.name).join(', ');
 
     // Save for each selected day
     customizeForm.days.forEach((day) => {
@@ -364,8 +388,11 @@ export default function MarketsRoutes() {
         marketerId: customizeForm.marketerId,
         marketerName: marketerObj?.name || '',
         day,
-        marketId: customizeForm.marketId,
-        marketName: marketObj?.name || '',
+        marketId: primaryMarketId,
+        marketName: primaryMarketName,
+        marketIds: chosenMarketObjs.map((m) => m.id),
+        marketNames: chosenMarketObjs.map((m) => m.name),
+        markets: chosenMarketObjs,
         startTime: customizeForm.startTime,
         endTime: customizeForm.endTime,
         priority: customizeForm.priority,
@@ -1597,10 +1624,12 @@ export default function MarketsRoutes() {
                 </div>
               </div>
 
-              {/* Market Selector + Add New Market */}
+              {/* Multi-Market Route Selector */}
               <div>
                 <div className="flex justify-between items-center mb-1">
-                  <label className="font-bold text-slate-700 uppercase">3. Assigned Market / Territory *</label>
+                  <label className="font-bold text-slate-700 uppercase">
+                    3. Route Markets ({customizeForm.selectedMarketIds?.length || 0} Selected) *
+                  </label>
                   <button
                     type="button"
                     onClick={() => setShowAddMarketModal(true)}
@@ -1609,18 +1638,80 @@ export default function MarketsRoutes() {
                     + Add New Market
                   </button>
                 </div>
-                <select
-                  value={customizeForm.marketId}
-                  onChange={(e) => setCustomizeForm((f) => ({ ...f, marketId: e.target.value }))}
-                  required
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl p-2.5 font-bold text-slate-900 focus:ring-2 focus:ring-red-600 outline-none"
-                >
-                  {markets.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.name} ({m.district || 'MP'})
-                    </option>
-                  ))}
-                </select>
+                <p className="text-[11px] text-slate-500 mb-2">
+                  Select one or more markets for this day. The marketer will choose from these on Start My Day.
+                </p>
+
+                {/* Selected Markets Ordered Badges */}
+                {customizeForm.selectedMarketIds?.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 p-2 bg-amber-50/70 border border-amber-200 rounded-xl mb-2">
+                    {customizeForm.selectedMarketIds.map((mId, idx) => {
+                      const mktObj = getMarket(mId);
+                      return (
+                        <span
+                          key={mId}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-200/90 text-amber-950 rounded-lg text-xs font-black shadow-2xs"
+                        >
+                          <span>#{idx + 1} {mktObj?.name || 'Market'}</span>
+                          {customizeForm.selectedMarketIds.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setCustomizeForm((f) => ({
+                                  ...f,
+                                  selectedMarketIds: f.selectedMarketIds.filter((id) => id !== mId),
+                                }));
+                              }}
+                              className="w-3.5 h-3.5 rounded-full bg-amber-400/80 hover:bg-amber-500 flex items-center justify-center text-[10px]"
+                            >
+                              ×
+                            </button>
+                          )}
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Market Quick Selection Grid */}
+                <div className="max-h-36 overflow-y-auto p-2 bg-slate-50 border border-slate-200 rounded-xl space-y-1">
+                  {markets.map((m) => {
+                    const isChecked = customizeForm.selectedMarketIds?.includes(m.id);
+                    return (
+                      <label
+                        key={m.id}
+                        className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors ${
+                          isChecked ? 'bg-amber-100/70 text-amber-950 font-bold' : 'hover:bg-slate-100 text-slate-700'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setCustomizeForm((f) => ({
+                                  ...f,
+                                  selectedMarketIds: [...(f.selectedMarketIds || []), m.id],
+                                }));
+                              } else {
+                                if ((customizeForm.selectedMarketIds?.length || 0) > 1) {
+                                  setCustomizeForm((f) => ({
+                                    ...f,
+                                    selectedMarketIds: (f.selectedMarketIds || []).filter((id) => id !== m.id),
+                                  }));
+                                }
+                              }
+                            }}
+                            className="rounded text-red-600 focus:ring-red-500"
+                          />
+                          <span className="text-xs">{m.name}</span>
+                        </div>
+                        <span className="text-[10px] text-slate-500">{m.district || 'MP'}</span>
+                      </label>
+                    );
+                  })}
+                </div>
               </div>
 
               {/* Shift Timing */}

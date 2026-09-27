@@ -379,9 +379,16 @@ export const DataProvider = ({ children }) => {
     setAuditLogs(prev => [log, ...prev]);
   };
 
-  // getTodayMarket: returns the marketer's assigned market for a given date.
-  // Prioritizes active date overrides / substitute assignments before falling back to weekly recurring route.
-  const getTodayMarket = (marketerId, dateStr = getFormattedDate()) => {
+  // ======= ROUTE-BASED MARKET ACCESS ENGINE =======
+
+  // getTodayAvailableMarkets: returns the list of markets available on today's route for a marketer.
+  // Checks single-day overrides / substitutes first, then weekly recurring route with multiple markets, then marketer's master markets.
+  const getTodayAvailableMarkets = (marketerId, dateStr = getFormattedDate()) => {
+    if (!marketerId) return markets;
+
+    let resolvedMarkets = [];
+    const dayName = getDayOfWeekName(dateStr);
+
     // 1. Check active single-day temporary assignment / override / substitute for this marketer on dateStr
     const temp = tempAssignments.find(
       (t) => (t.marketerId === marketerId || t.assignedMarketerId === marketerId) &&
@@ -390,88 +397,321 @@ export const DataProvider = ({ children }) => {
     );
 
     if (temp) {
-      const marketObj = markets.find((m) => m.id === temp.marketId);
-      const isSubstitute = Boolean(temp.isSubstitute);
-      const isAbsent = Boolean(temp.isAbsent);
-
-      return {
-        marketId: temp.marketId,
-        marketName: temp.marketName || (marketObj ? marketObj.name : 'Assigned Market'),
-        routeId: temp.routeId || null,
-        connectedMarketId: temp.connectedMarketId || null,
-        connectedMarketName: temp.connectedMarketName || null,
-        routeType: isSubstitute
-          ? 'Substitute Route'
-          : isAbsent
-          ? 'Marked Absent'
-          : 'Temporary Override',
-        isOverride: true,
-        isSubstitute,
-        isAbsent,
-        substituteMarketerId: temp.substituteMarketerId || null,
-        substituteMarketerName: temp.substituteMarketerName || null,
-        absentMarketerId: temp.absentMarketerId || null,
-        absentMarketerName: temp.absentMarketerName || null,
-        startTime: temp.startTime || '09:45 AM',
-        endTime: temp.endTime || '06:30 PM',
-        priority: temp.priority || 'Normal',
-        reason: temp.reason || 'Admin Temporary Assignment',
-        notes: temp.notes || '',
-        marketObj,
-      };
+      if (Array.isArray(temp.markets) && temp.markets.length > 0) {
+        resolvedMarkets = temp.markets.map((m, idx) => ({
+          id: m.id || m.marketId,
+          name: m.name || m.marketName,
+          order: m.order || idx + 1,
+        }));
+      } else if (Array.isArray(temp.marketIds) && temp.marketIds.length > 0) {
+        resolvedMarkets = temp.marketIds.map((mId, idx) => {
+          const mObj = markets.find((x) => x.id === mId || x.name?.toLowerCase() === mId.toLowerCase());
+          return {
+            id: mId,
+            name: mObj ? mObj.name : (temp.marketNames?.[idx] || mId),
+            order: idx + 1,
+          };
+        });
+      } else if (temp.marketId || temp.marketName) {
+        const mObj = markets.find((x) => x.id === temp.marketId || x.name === temp.marketName);
+        resolvedMarkets = [{
+          id: temp.marketId || mObj?.id || 'mkt-temp',
+          name: temp.marketName || mObj?.name || 'Assigned Market',
+          order: 1,
+        }];
+      }
     }
 
-    // 2. Check recurring weekly route schedule
+    // 2. If no temporary override, check recurring weekly route schedule
+    if (resolvedMarkets.length === 0) {
+      const route = weeklyRoutes.find(
+        (r) => r.marketerId === marketerId &&
+          r.day?.toLowerCase() === dayName.toLowerCase() &&
+          (r.active !== false && r.status !== 'Inactive')
+      );
+
+      if (route) {
+        if (Array.isArray(route.markets) && route.markets.length > 0) {
+          resolvedMarkets = route.markets.map((m, idx) => ({
+            id: m.id || m.marketId,
+            name: m.name || m.marketName,
+            order: m.order || idx + 1,
+          }));
+        } else if (Array.isArray(route.marketIds) && route.marketIds.length > 0) {
+          resolvedMarkets = route.marketIds.map((mId, idx) => {
+            const mObj = markets.find((x) => x.id === mId || x.name?.toLowerCase() === mId.toLowerCase());
+            return {
+              id: mId,
+              name: mObj ? mObj.name : (route.marketNames?.[idx] || mId),
+              order: idx + 1,
+            };
+          });
+        } else if (route.marketId || route.marketName) {
+          const mObj = markets.find((x) => x.id === route.marketId || x.name === route.marketName);
+          resolvedMarkets = [{
+            id: route.marketId || mObj?.id || 'mkt-route',
+            name: route.marketName || mObj?.name || 'Fixed Market',
+            order: 1,
+          }];
+        }
+      }
+    }
+
+    // 3. Fallback: markets assigned directly to marketer in markets master
+    if (resolvedMarkets.length === 0) {
+      const assigned = markets.filter((m) => m.assignedMarketerId === marketerId);
+      if (assigned.length > 0) {
+        resolvedMarkets = assigned.map((m, idx) => ({
+          id: m.id,
+          name: m.name,
+          order: idx + 1,
+        }));
+      }
+    }
+
+    // 4. Final safety fallback: default available markets
+    if (resolvedMarkets.length === 0) {
+      resolvedMarkets = markets.slice(0, 3).map((m, idx) => ({
+        id: m.id,
+        name: m.name,
+        order: idx + 1,
+      }));
+    }
+
+    // Enrich each market with live operational stats (Total Parties, Total Due, Pending Coll., Last Visit)
+    return resolvedMarkets.map((rm) => {
+      const rmIdNorm = (rm.id || '').toLowerCase().trim();
+      const rmNameNorm = (rm.name || '').toLowerCase().trim();
+      const fullMarket = markets.find((m) => m.id === rm.id || m.name?.toLowerCase() === rmNameNorm);
+
+      const mShops = shops.filter((s) => {
+        const sMid = (s.marketId || '').toLowerCase().trim();
+        const sMname = (s.marketName || '').toLowerCase().trim();
+        const sCmid = (s.connectedMarketId || '').toLowerCase().trim();
+        const sCmname = (s.connectedMarketName || '').toLowerCase().trim();
+        const sAddr = (s.address || '').toLowerCase().trim();
+
+        return (
+          (rmIdNorm && (sMid === rmIdNorm || sCmid === rmIdNorm)) ||
+          (rmNameNorm && (sMname === rmNameNorm || sCmname === rmNameNorm || sAddr.includes(rmNameNorm)))
+        );
+      });
+
+      const totalParties = mShops.length;
+      let totalDue = 0;
+      let pendingCollections = 0;
+      let latestVisit = null;
+
+      mShops.forEach((s) => {
+        const due = getShopOutstanding ? getShopOutstanding(s) : (s.outstanding || 0);
+        if (due > 0) {
+          totalDue += due;
+          pendingCollections += 1;
+        }
+        if (s.lastVisitDate) {
+          if (!latestVisit || s.lastVisitDate > latestVisit) {
+            latestVisit = s.lastVisitDate;
+          }
+        }
+      });
+
+      return {
+        id: rm.id,
+        name: fullMarket ? fullMarket.name : rm.name,
+        district: fullMarket?.district || 'General',
+        distanceKm: fullMarket?.distanceKm || 50,
+        order: rm.order || 1,
+        totalParties,
+        totalDue,
+        pendingCollections,
+        lastVisitDate: latestVisit || 'Never',
+        marketObj: fullMarket || rm,
+      };
+    });
+  };
+
+  // getTodayMarket: returns the marketer's active market and route information for a given date.
+  // When day is ACTIVE, returns the selected ACTIVE MARKET chosen by the marketer.
+  const getTodayMarket = (marketerId, dateStr = getFormattedDate()) => {
     const dayName = getDayOfWeekName(dateStr);
-    const route = weeklyRoutes.find(
-      (r) => r.marketerId === marketerId &&
-        r.day?.toLowerCase() === dayName.toLowerCase() &&
-        (r.active !== false && r.status !== 'Inactive')
+    const availableMarkets = getTodayAvailableMarkets(marketerId, dateStr);
+    const primaryFallback = availableMarkets[0] || null;
+
+    // Check if marketer has checked in today
+    const chk = checkIns.find(
+      (c) => c.marketerId === marketerId && (c.date === dateStr || c.createdDate === dateStr)
     );
 
-    if (route) {
-      const marketObj = markets.find((m) => m.id === route.marketId);
-      const cm = connectedMarkets.find((c) => c.id === route.connectedMarketId);
+    const isDayActive = Boolean(chk && chk.status === 'ACTIVE' && !chk.endTime && !chk.isDayEnded);
+    const isDayEnded = Boolean(chk && (chk.status === 'INACTIVE' || chk.endTime || chk.isDayEnded));
+
+    // 1. If currently ACTIVE: Return the selected ACTIVE MARKET chosen by the marketer
+    if (isDayActive && chk.activeMarketId) {
+      const activeMktObj = markets.find(
+        (m) => m.id === chk.activeMarketId || m.name?.toLowerCase() === chk.activeMarketName?.toLowerCase()
+      ) || availableMarkets.find((m) => m.id === chk.activeMarketId) || primaryFallback;
+
       return {
-        marketId: route.marketId,
-        marketName: route.marketName || (marketObj ? marketObj.name : 'Fixed Market'),
-        routeId: route.routeId || null,
-        connectedMarketId: route.connectedMarketId || null,
-        connectedMarketName: cm ? cm.name : (route.marketName || null),
-        routeType: 'Normal Weekly Route',
-        isOverride: false,
+        marketId: chk.activeMarketId,
+        marketName: chk.activeMarketName || activeMktObj?.name || 'Active Market',
+        routeType: 'Active Selected Market',
+        status: 'ACTIVE',
+        isActiveMarket: true,
+        startTime: chk.startTime || chk.createdTime || '09:45 AM',
+        endTime: null,
         day: dayName,
-        startTime: route.startTime || '09:45 AM',
-        endTime: route.endTime || '06:30 PM',
-        priority: route.priority || 'Normal',
-        notes: route.notes || '',
-        marketObj,
+        routeMarkets: chk.routeMarkets?.length ? chk.routeMarkets : availableMarkets,
+        marketChanges: chk.marketChanges || [],
+        marketObj: activeMktObj,
       };
     }
 
-    // 3. Fallback: primary market assigned to marketer in markets master
-    const primary = markets.find((m) => m.assignedMarketerId === marketerId);
-    if (primary) {
+    // 2. If day has ended
+    if (isDayEnded) {
+      const activeMktObj = markets.find(
+        (m) => m.id === chk.activeMarketId || m.name?.toLowerCase() === chk.activeMarketName?.toLowerCase()
+      ) || primaryFallback;
+
       return {
-        marketId: primary.id,
-        marketName: primary.name,
-        routeType: 'Primary Assigned Market',
-        isOverride: false,
-        startTime: '09:45 AM',
-        endTime: '06:30 PM',
-        priority: 'Normal',
-        marketObj: primary,
+        marketId: chk.activeMarketId || primaryFallback?.id || null,
+        marketName: chk.activeMarketName || primaryFallback?.name || 'Completed Market',
+        routeType: 'Day Session Ended',
+        status: 'ENDED',
+        isActiveMarket: false,
+        startTime: chk.startTime || null,
+        endTime: chk.endTime || chk.endedTime || null,
+        day: dayName,
+        routeMarkets: chk.routeMarkets?.length ? chk.routeMarkets : availableMarkets,
+        marketChanges: chk.marketChanges || [],
+        marketObj: activeMktObj,
       };
     }
 
-    return null;
+    // 3. If day not started yet: Return route markets requiring selection on Start My Day
+    return {
+      marketId: primaryFallback?.id || null,
+      marketName: primaryFallback?.name || 'Route Selection Required',
+      routeType: `${dayName} Route (${availableMarkets.length} Markets Available)`,
+      status: 'NOT_STARTED',
+      isActiveMarket: false,
+      startTime: null,
+      endTime: null,
+      day: dayName,
+      routeMarkets: availableMarkets,
+      marketChanges: [],
+      marketObj: primaryFallback,
+    };
+  };
+
+  // changeMarketerActiveMarket: Marketer or Admin switches active market during an active workday
+  const changeMarketerActiveMarket = ({
+    marketerId,
+    newMarketId,
+    newMarketName,
+    changedBy = 'Marketer',
+    reason = 'Market Territory Changed',
+    date = getFormattedDate(),
+  }) => {
+    if (!marketerId || !newMarketId) return null;
+
+    const changeTime = getFormattedTime();
+    const todayDate = date || getFormattedDate();
+    let updatedRecord = null;
+
+    setCheckIns((prev) => {
+      const existingIdx = prev.findIndex(
+        (c) => c.marketerId === marketerId && (c.date === todayDate || c.createdDate === todayDate)
+      );
+
+      if (existingIdx >= 0) {
+        const existing = prev[existingIdx];
+        const prevMarketId = existing.activeMarketId;
+        const prevMarketName = existing.activeMarketName;
+
+        const prevChanges = Array.isArray(existing.marketChanges) ? existing.marketChanges : [];
+        const newChangeLog = {
+          previousMarketId: prevMarketId || null,
+          previousMarketName: prevMarketName || null,
+          newMarketId,
+          newMarketName,
+          changedAt: changeTime,
+          changedBy,
+          reason,
+          date: todayDate,
+        };
+
+        const existingSessions = Array.isArray(existing.sessions) ? existing.sessions : [];
+        const updatedSessions = existingSessions.map((s, idx) => {
+          if (idx === existingSessions.length - 1 && (!s.endTime || s.status === 'ACTIVE')) {
+            return {
+              ...s,
+              activeMarketId: newMarketId,
+              activeMarketName: newMarketName,
+            };
+          }
+          return s;
+        });
+
+        updatedRecord = {
+          ...existing,
+          activeMarketId: newMarketId,
+          activeMarketName: newMarketName,
+          marketChanges: [...prevChanges, newChangeLog],
+          sessions: updatedSessions,
+          updatedDate: getFormattedDate(),
+          updatedTime: changeTime,
+        };
+
+        const updated = [...prev];
+        updated[existingIdx] = updatedRecord;
+        return updated;
+      }
+      return prev;
+    });
+
+    if (updatedRecord) {
+      persistToFirestore('checkIns', updatedRecord.id, updatedRecord);
+
+      addRouteHistoryLog({
+        changedBy,
+        marketerId,
+        marketerName: updatedRecord.marketerName || 'Marketer',
+        changeType: 'MARKET_CHANGED',
+        day: getDayOfWeekName(todayDate),
+        date: todayDate,
+        time: changeTime,
+        oldMarketName: updatedRecord.marketChanges[updatedRecord.marketChanges.length - 1]?.previousMarketName || 'None',
+        newMarketName,
+        reason,
+        notes: `Switched active marketing territory from ${updatedRecord.marketChanges[updatedRecord.marketChanges.length - 1]?.previousMarketName || 'None'} to ${newMarketName}`,
+      });
+
+      addAuditLog(
+        changedBy,
+        'MARKETER',
+        'CHANGE_ACTIVE_MARKET',
+        `${updatedRecord.marketerName || marketerId} switched active market to ${newMarketName}`,
+        null,
+        { marketerId, newMarketId, newMarketName, time: changeTime }
+      );
+
+      try {
+        locationTrackingService.updateStatus({
+          marketId: newMarketId,
+          marketName: newMarketName,
+          activityDetails: `Switched active market to ${newMarketName}`,
+        });
+      } catch (e) {}
+    }
+
+    return updatedRecord;
   };
 
   // assignMarketToMarketer: Assign a market directly to a marketer
   const assignMarketToMarketer = (marketId, marketerId) => {
-    const marketer = marketers.find(m => m.id === marketerId);
+    const marketer = marketers.find((m) => m.id === marketerId);
     let updatedMarket = null;
-    setMarkets(prev => prev.map(m => {
+    setMarkets((prev) => prev.map((m) => {
       if (m.id === marketId) {
         updatedMarket = {
           ...m,
@@ -493,7 +733,7 @@ export const DataProvider = ({ children }) => {
   const addMarket = (marketData) => {
     const rawName = marketData.name?.trim() || '';
     const slug = rawName.toLowerCase().replace(/[^a-z0-9]/g, '-');
-    const assignedMarketer = marketers.find(m => m.id === marketData.assignedMarketerId);
+    const assignedMarketer = marketers.find((m) => m.id === marketData.assignedMarketerId);
     const newMarket = {
       id: marketData.id || `mkt-${slug || Date.now()}`,
       name: rawName,
@@ -509,66 +749,69 @@ export const DataProvider = ({ children }) => {
       createdTime: getFormattedTime(),
       ...marketData,
     };
-    setMarkets(prev => [...prev, newMarket]);
+    setMarkets((prev) => [...prev, newMarket]);
     persistToFirestore('markets', newMarket.id, newMarket);
     addAuditLog('Admin', 'ADMIN', 'ADD_MARKET', `Market ${newMarket.name} created`, null, newMarket);
     return newMarket;
   };
 
   // getAuthorizedShops: returns shops the marketer can access.
-  // Rule: All shops belonging to any Market assigned to this marketer are automatically available!
+  // CRITICAL REQUIREMENT #6: When marketer's day is ACTIVE, strictly scope to the activeMarketId selected!
   const getAuthorizedShops = (marketerId, dateStr = getFormattedDate()) => {
     if (!marketerId) return shops;
 
-    // 1. Get all markets assigned directly to this marketer
-    const assignedMarketIds = markets
-      .filter(m => m.assignedMarketerId === marketerId)
-      .map(m => m.id);
-    const assignedMarketNames = markets
-      .filter(m => m.assignedMarketerId === marketerId)
-      .map(m => (m.name || '').toLowerCase().trim());
+    // Check if marketer has an active day session on dateStr
+    const chk = checkIns.find(
+      (c) => c.marketerId === marketerId && (c.date === dateStr || c.createdDate === dateStr)
+    );
+    const isDayActive = Boolean(chk && chk.status === 'ACTIVE' && !chk.endTime && !chk.isDayEnded && chk.activeMarketId);
 
-    const byAssignedMarkets = shops.filter(s => {
-      if (s.marketId && assignedMarketIds.includes(s.marketId)) return true;
-      if (s.marketName && assignedMarketNames.includes(s.marketName.toLowerCase().trim())) return true;
-      if (s.connectedMarketName && assignedMarketNames.includes(s.connectedMarketName.toLowerCase().trim())) return true;
-      if (s.assignedMarketerId === marketerId) return true;
-      return false;
+    // 1. STRICT SCOPING WHEN DAY IS ACTIVE: Return ONLY shops in the selected active market!
+    if (isDayActive && chk.activeMarketId) {
+      const actId = (chk.activeMarketId || '').toLowerCase().trim();
+      const actName = (chk.activeMarketName || '').toLowerCase().trim();
+
+      const activeShops = shops.filter((s) => {
+        const smId = (s.marketId || '').toLowerCase().trim();
+        const smName = (s.marketName || '').toLowerCase().trim();
+        const scmId = (s.connectedMarketId || '').toLowerCase().trim();
+        const scmName = (s.connectedMarketName || '').toLowerCase().trim();
+        const sAddr = (s.address || '').toLowerCase().trim();
+
+        return (
+          (actId && (smId === actId || scmId === actId)) ||
+          (actName && (smName === actName || scmName === actName || sAddr.includes(actName)))
+        );
+      });
+
+      if (activeShops.length > 0) return activeShops;
+    }
+
+    // 2. Before Start My Day or preview: Return shops across all available route markets for today
+    const availableMarkets = getTodayAvailableMarkets(marketerId, dateStr);
+    const mktIds = availableMarkets.map((m) => (m.id || '').toLowerCase().trim()).filter(Boolean);
+    const mktNames = availableMarkets.map((m) => (m.name || '').toLowerCase().trim()).filter(Boolean);
+
+    const routeShops = shops.filter((s) => {
+      const smId = (s.marketId || '').toLowerCase().trim();
+      const smName = (s.marketName || '').toLowerCase().trim();
+      const scmId = (s.connectedMarketId || '').toLowerCase().trim();
+      const scmName = (s.connectedMarketName || '').toLowerCase().trim();
+      const sAddr = (s.address || '').toLowerCase().trim();
+
+      return (
+        mktIds.includes(smId) || mktIds.includes(scmId) ||
+        mktNames.includes(smName) || mktNames.includes(scmName) ||
+        mktNames.some((n) => sAddr.includes(n)) ||
+        s.assignedMarketerId === marketerId
+      );
     });
 
-    // 2. Also check today's route / weekly market
-    const todayMarket = getTodayMarket(marketerId, dateStr);
-    let byRouteShops = [];
-    if (todayMarket) {
-      if (todayMarket.routeId) {
-        const cmsForRoute = connectedMarkets.filter(c => c.routeId === todayMarket.routeId).map(c => c.id);
-        byRouteShops = shops.filter(s =>
-          s.routeId === todayMarket.routeId ||
-          (s.connectedMarketId && cmsForRoute.includes(s.connectedMarketId)) ||
-          (s.marketId && s.marketId.toLowerCase().includes(todayMarket.routeId.replace('route-', '').toLowerCase())) ||
-          (s.marketName && s.marketName.toLowerCase() === todayMarket.marketName?.toLowerCase())
-        );
-      } else if (todayMarket.connectedMarketId) {
-        byRouteShops = shops.filter(s => s.connectedMarketId === todayMarket.connectedMarketId);
-      } else if (todayMarket.marketId) {
-        byRouteShops = shops.filter(s =>
-          s.marketId === todayMarket.marketId ||
-          (s.marketName && s.marketName.toLowerCase() === todayMarket.marketName?.toLowerCase())
-        );
-      }
-    }
+    if (routeShops.length > 0) return routeShops;
 
-    // Combine distinct shops
-    const combinedMap = new Map();
-    byAssignedMarkets.forEach(s => combinedMap.set(s.id, s));
-    byRouteShops.forEach(s => combinedMap.set(s.id, s));
-
-    if (combinedMap.size > 0) {
-      return Array.from(combinedMap.values());
-    }
-
-    // Fallback: return all shops
-    return shops;
+    // Fallback: return all shops assigned to this marketer
+    const assignedShops = shops.filter((s) => s.assignedMarketerId === marketerId);
+    return assignedShops.length > 0 ? assignedShops : shops;
   };
 
   // getShopOutstanding: Computes exact live ledger balance matching Party Statement report
@@ -1105,6 +1348,10 @@ export const DataProvider = ({ children }) => {
     const today = checkInData.date || getFormattedDate();
     const startT = checkInData.startTime || checkInData.createdTime || getFormattedTime();
     const marketerId = checkInData.marketerId;
+    const selectedMarketId = checkInData.activeMarketId || checkInData.marketId;
+    const selectedMarketName = checkInData.activeMarketName || checkInData.marketName;
+    const availableRouteMarkets = checkInData.routeMarkets || getTodayAvailableMarkets(marketerId, today);
+
     let createdOrUpdated = null;
 
     setCheckIns((prev) => {
@@ -1122,6 +1369,8 @@ export const DataProvider = ({ children }) => {
               startTime: existing.startTime || existing.createdTime || startT,
               endTime: existing.endTime || null,
               status: existing.endTime ? 'ENDED' : 'ACTIVE',
+              activeMarketId: existing.activeMarketId || selectedMarketId,
+              activeMarketName: existing.activeMarketName || selectedMarketName,
             }];
 
         const lastSession = existingSessions[existingSessions.length - 1];
@@ -1137,6 +1386,8 @@ export const DataProvider = ({ children }) => {
             startTime: startT,
             endTime: null,
             status: 'ACTIVE',
+            activeMarketId: selectedMarketId,
+            activeMarketName: selectedMarketName,
           };
           nextSessions = [...existingSessions, newSession];
         } else {
@@ -1144,10 +1395,32 @@ export const DataProvider = ({ children }) => {
           sessionNum = lastSession ? lastSession.sessionNumber : 1;
           nextSessions = existingSessions.map((s, idx) =>
             idx === existingSessions.length - 1
-              ? { ...s, startTime: s.startTime || startT, endTime: null, status: 'ACTIVE' }
+              ? {
+                  ...s,
+                  startTime: s.startTime || startT,
+                  endTime: null,
+                  status: 'ACTIVE',
+                  activeMarketId: selectedMarketId,
+                  activeMarketName: selectedMarketName,
+                }
               : s
           );
         }
+
+        const prevChanges = Array.isArray(existing.marketChanges) ? existing.marketChanges : [];
+        const updatedChanges = [
+          ...prevChanges,
+          {
+            previousMarketId: existing.activeMarketId || null,
+            previousMarketName: existing.activeMarketName || null,
+            newMarketId: selectedMarketId,
+            newMarketName: selectedMarketName,
+            changedAt: startT,
+            changedBy: checkInData.marketerName || 'Marketer',
+            date: today,
+            reason: sessionNum > 1 ? `Start Session ${sessionNum}` : 'Start My Day',
+          },
+        ];
 
         createdOrUpdated = {
           ...existing,
@@ -1161,8 +1434,12 @@ export const DataProvider = ({ children }) => {
           endedTime: null,
           status: 'ACTIVE',
           isDayEnded: false,
+          activeMarketId: selectedMarketId,
+          activeMarketName: selectedMarketName,
+          routeMarkets: availableRouteMarkets,
           currentSessionNumber: sessionNum,
           sessions: nextSessions,
+          marketChanges: updatedChanges,
           updatedDate: getFormattedDate(),
           updatedTime: getFormattedTime(),
         };
@@ -1177,6 +1454,8 @@ export const DataProvider = ({ children }) => {
           startTime: startT,
           endTime: null,
           status: 'ACTIVE',
+          activeMarketId: selectedMarketId,
+          activeMarketName: selectedMarketName,
         };
 
         createdOrUpdated = {
@@ -1190,8 +1469,23 @@ export const DataProvider = ({ children }) => {
           endedTime: null,
           status: 'ACTIVE',
           isDayEnded: false,
+          activeMarketId: selectedMarketId,
+          activeMarketName: selectedMarketName,
+          routeMarkets: availableRouteMarkets,
           currentSessionNumber: 1,
           sessions: [initialSession],
+          marketChanges: [
+            {
+              previousMarketId: null,
+              previousMarketName: null,
+              newMarketId: selectedMarketId,
+              newMarketName: selectedMarketName,
+              changedAt: startT,
+              changedBy: checkInData.marketerName || 'Marketer',
+              date: today,
+              reason: 'Start My Day',
+            },
+          ],
           updatedDate: getFormattedDate(),
           updatedTime: getFormattedTime(),
           syncStatus: isOfflineMode ? 'Pending Sync' : 'Synced',
@@ -1201,7 +1495,14 @@ export const DataProvider = ({ children }) => {
       }
     });
 
-    addAuditLog(checkInData.marketerName || marketerId, 'MARKETER', 'CHECK_IN', `Start Day (Session) for ${marketerId}`, null, createdOrUpdated);
+    addAuditLog(
+      checkInData.marketerName || marketerId,
+      'MARKETER',
+      'CHECK_IN',
+      `Start Day for ${checkInData.marketerName || marketerId} in ${selectedMarketName} at ${startT}`,
+      null,
+      createdOrUpdated
+    );
     if (createdOrUpdated) persistToFirestore('checkIns', createdOrUpdated.id, createdOrUpdated);
     return createdOrUpdated;
   };
@@ -2770,6 +3071,7 @@ export const DataProvider = ({ children }) => {
         getFormattedTime,
         getDayOfWeekName,
         getTodayMarket,
+        getTodayAvailableMarkets,
         getAuthorizedShops,
         getShopOutstanding,
         getActiveTarget,
@@ -2788,7 +3090,7 @@ export const DataProvider = ({ children }) => {
         importBatches, setImportBatches, importHistoricalData, importHistoricalBusinessData, importOldPartyData,
         gstConfig, setGstConfig,
         creditPolicy, setCreditPolicy,
-        checkIns, addCheckIn, endMarketerDay, adminEndMarketerDay,
+        checkIns, addCheckIn, endMarketerDay, adminEndMarketerDay, changeMarketerActiveMarket,
         liveLocations, setLiveLocations,
         isMarketerDayActive,
         visits, addShopVisit, ensureShopConnected,

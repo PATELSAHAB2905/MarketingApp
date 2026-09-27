@@ -32,6 +32,8 @@ export default function AdminDashboard({ onNavigate }) {
     returns,
     visits,
     checkIns = [],
+    getTodayMarket,
+    getTodayAvailableMarkets,
   } = useData();
 
   const todayDate = getFormattedDate();
@@ -308,10 +310,10 @@ export default function AdminDashboard({ onNavigate }) {
             <thead>
               <tr className="border-b border-slate-200 text-[11px] text-slate-400 uppercase font-bold">
                 <th className="pb-3 px-3">Marketer</th>
-                <th className="pb-3 px-3">Current Status</th>
-                <th className="pb-3 px-3">Today's Sessions History</th>
-                <th className="pb-3 px-3">Latest Start</th>
-                <th className="pb-3 px-3">Latest End</th>
+                <th className="pb-3 px-3">Route Markets</th>
+                <th className="pb-3 px-3">Active Market</th>
+                <th className="pb-3 px-3">Start Time</th>
+                <th className="pb-3 px-3">Status</th>
                 <th className="pb-3 px-3 text-right">Today Orders</th>
                 <th className="pb-3 px-3 text-right">Today Sales</th>
               </tr>
@@ -326,6 +328,13 @@ export default function AdminDashboard({ onNavigate }) {
                 const startTimeStr = chk?.startTime || chk?.createdTime || '—';
                 const endTimeStr = chk?.endTime || chk?.endedTime || '—';
 
+                // Available route markets for today
+                const availMkts = getTodayAvailableMarkets ? getTodayAvailableMarkets(m.id, todayDate) : [];
+                const routeMarketNames = availMkts.map((r) => r.name).join(', ') || '—';
+
+                // Active market resolution
+                const activeMktName = chk?.activeMarketName || (isActive ? (chk?.marketName || 'Active Market') : (isEnded ? chk?.marketName : '—'));
+
                 const mOrders = orders.filter((o) => o.marketerId === m.id && (o.date === todayDate || o.createdDate === todayDate));
                 const mKg = mOrders.reduce((s, o) => s + (o.totalKg || 0), 0);
                 const mVal = mOrders.reduce((s, o) => s + (o.grandTotal || o.totalValue || 0), 0);
@@ -336,43 +345,54 @@ export default function AdminDashboard({ onNavigate }) {
                       {m.name}
                       <p className="text-[11px] text-slate-400 font-normal">{m.mobile}</p>
                     </td>
-                    <td className="py-3.5 px-3">
-                      <span
-                        className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black border ${
-                          isActive
-                            ? 'bg-emerald-50 text-emerald-800 border-emerald-300 shadow-2xs'
-                            : 'bg-slate-100 text-slate-500 border-slate-300'
-                        }`}
-                      >
-                        <span className={`w-2 h-2 rounded-full ${isActive ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'}`} />
-                        <span>{isActive ? 'ACTIVE' : 'INACTIVE'}</span>
-                      </span>
+                    <td className="py-3.5 px-3 font-medium text-slate-700">
+                      <div className="flex flex-wrap gap-1 max-w-xs">
+                        {availMkts.length > 0 ? (
+                          availMkts.map((am, amIdx) => (
+                            <span key={amIdx} className="px-1.5 py-0.5 bg-slate-100 text-slate-700 rounded text-[10px] font-semibold">
+                              {am.name}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-slate-400">—</span>
+                        )}
+                      </div>
                     </td>
                     <td className="py-3.5 px-3">
-                      {chk?.sessions && chk.sessions.length > 0 ? (
-                        <div className="space-y-1">
-                          {chk.sessions.map((sess, sIdx) => (
-                            <div key={sIdx} className="flex items-center gap-1 text-[11px]">
-                              <span className="font-extrabold text-slate-600">S{sess.sessionNumber || sIdx + 1}:</span>
-                              <span className="text-slate-800 font-bold">{sess.startTime}</span>
-                              <span className="text-slate-400">→</span>
-                              {sess.endTime ? (
-                                <span className="font-bold text-slate-700">{sess.endTime}</span>
-                              ) : (
-                                <span className="text-emerald-700 font-black bg-emerald-100 px-1.5 py-0.2 rounded-md">Active 🟢</span>
-                              )}
-                            </div>
-                          ))}
+                      {isActive && activeMktName && activeMktName !== '—' ? (
+                        <div className="flex items-center gap-1.5">
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 bg-emerald-50 text-emerald-900 border border-emerald-300 rounded-lg font-black text-xs">
+                            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                            {activeMktName}
+                          </span>
+                          {chk?.marketChanges?.length > 1 && (
+                            <span className="px-1.5 py-0.5 bg-amber-100 text-amber-900 font-extrabold rounded text-[9px]" title={`${chk.marketChanges.length} market switches today`}>
+                              +{chk.marketChanges.length - 1} Switched
+                            </span>
+                          )}
                         </div>
+                      ) : isEnded ? (
+                        <span className="text-slate-600 font-bold text-xs">{activeMktName} (Ended)</span>
                       ) : (
-                        <span className="text-slate-400 text-xs">—</span>
+                        <span className="text-slate-400 text-xs italic">Not Started</span>
                       )}
                     </td>
                     <td className="py-3.5 px-3 font-bold text-slate-800 text-xs">
                       {startTimeStr}
                     </td>
-                    <td className="py-3.5 px-3 font-bold text-slate-800 text-xs">
-                      {isEnded ? <span className="text-red-700 font-extrabold">{endTimeStr}</span> : endTimeStr}
+                    <td className="py-3.5 px-3">
+                      <span
+                        className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-black border ${
+                          isActive
+                            ? 'bg-emerald-50 text-emerald-800 border-emerald-300 shadow-2xs'
+                            : isEnded
+                            ? 'bg-slate-100 text-slate-600 border-slate-300'
+                            : 'bg-slate-50 text-slate-400 border-slate-200'
+                        }`}
+                      >
+                        <span className={`w-1.5 h-1.5 rounded-full ${isActive ? 'bg-emerald-500 animate-pulse' : isEnded ? 'bg-slate-500' : 'bg-slate-300'}`} />
+                        <span>{isActive ? 'ACTIVE' : isEnded ? 'DAY ENDED' : 'NOT STARTED'}</span>
+                      </span>
                     </td>
                     <td className="py-3.5 px-3 text-right font-bold text-slate-800">
                       {mOrders.length} ({mKg} KG)

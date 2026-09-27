@@ -57,6 +57,8 @@ export default function MarketerDashboard({ activeTab, setActiveTab }) {
   const {
     getFormattedDate,
     getTodayMarket,
+    getTodayAvailableMarkets,
+    changeMarketerActiveMarket,
     getAuthorizedShops,
     targets,
     checkIns,
@@ -78,6 +80,9 @@ export default function MarketerDashboard({ activeTab, setActiveTab }) {
   const [lastReceiptCollection, setLastReceiptCollection] = useState(null);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [showBlockedLogoutModal, setShowBlockedLogoutModal] = useState(false);
+  const [showChangeMarketModal, setShowChangeMarketModal] = useState(false);
+  const [selectedChangeMarketId, setSelectedChangeMarketId] = useState('');
+  const [changeMarketReason, setChangeMarketReason] = useState('Market Territory Shift');
 
   // Listen for global navbar EOD triggers
   useEffect(() => {
@@ -411,10 +416,15 @@ export default function MarketerDashboard({ activeTab, setActiveTab }) {
       );
     }
 
+    // Available route markets for today
+    const availableRouteMarkets = getTodayAvailableMarkets
+      ? getTodayAvailableMarkets(currentUser?.id, todayDate)
+      : [];
+
     // Default: 'home' tab
     return (
       <div className="pb-24 p-4 max-w-md mx-auto space-y-4">
-        {/* 1. Header Greeting & Today's Market */}
+        {/* 1. Header Greeting & Today's Active Market */}
         <div className="bg-gradient-to-br from-red-900 via-red-800 to-amber-900 text-white rounded-3xl p-5 shadow-xl relative overflow-hidden">
           <div className="absolute right-[-20px] top-[-20px] w-32 h-32 bg-amber-400/10 rounded-full blur-2xl pointer-events-none" />
 
@@ -423,68 +433,115 @@ export default function MarketerDashboard({ activeTab, setActiveTab }) {
               <p className="text-xs text-amber-300 font-semibold tracking-wide">
                 GOOD MORNING, {currentUser?.name?.split(' ')[0]?.toUpperCase() || 'MARKETER'} 👋
               </p>
-              <p className="text-[11px] text-red-200 mt-0.5">{todayDate}</p>
-          </div>
-          <StatusBadge
-            status={todayMarket?.routeType || 'Normal Fixed Route'}
-            type="route"
-          />
-        </div>
-
-        <div className="mt-2 pt-3 border-t border-white/10 flex justify-between items-center">
-          <div>
-            <p className="text-[10px] text-red-200 uppercase font-bold tracking-widest">TODAY'S MARKET</p>
-            <h2 className="text-3xl font-black tracking-tight text-amber-300 uppercase">
-              {todayMarket?.marketName || 'PACHORE'}
-            </h2>
-            <p className="text-xs text-amber-100/90 mt-0.5 flex items-center gap-1">
-              <Store className="w-3.5 h-3.5 text-amber-300" />
-              <span>{authorizedShops.length} Assigned Shops</span>
-            </p>
-          </div>
-
-          {!todayCheckIn ? (
-            <button
-              onClick={() => setActiveModal('checkin')}
-              className="py-3 px-5 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-500 hover:to-amber-600 text-red-950 rounded-2xl font-black text-sm shadow-lg flex items-center gap-2 transform active:scale-95 transition-all"
-            >
-              <Play className="w-4 h-4 fill-red-950" />
-              <span>START MY DAY</span>
-            </button>
-          ) : isDayActive ? (
-            <div className="flex flex-col items-end gap-1.5">
-              <div className="bg-emerald-500/20 border border-emerald-400/40 text-emerald-200 px-3 py-1 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-2xs">
-                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                <span>
-                  {todayCheckIn.sessions?.length > 1
-                    ? `Session ${todayCheckIn.sessions.length} Active (${todayCheckIn.startTime}) 🟢`
-                    : `Day Active (${todayCheckIn.startTime || todayCheckIn.createdTime}) 🟢`}
-                </span>
-              </div>
-              <button
-                onClick={() => setActiveModal('eod')}
-                className="py-1 px-3 bg-red-950/80 hover:bg-red-900 border border-amber-400/40 text-amber-300 rounded-xl font-extrabold text-[11px] shadow-xs active:scale-95 transition-all"
-              >
-                END MY DAY →
-              </button>
+              <p className="text-[11px] text-red-200 mt-0.5">{todayDate} • {todayMarket?.day || ''}</p>
             </div>
-          ) : (
-            <div className="flex flex-col items-end gap-1.5">
-              <div className="bg-slate-800/90 border border-slate-700 text-slate-300 px-2.5 py-0.5 rounded-lg text-[10px] font-bold flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
-                <span>Session {todayCheckIn.sessions?.length || 1} Ended ({todayCheckIn.endTime}) ⚪</span>
+            <StatusBadge
+              status={isDayActive ? 'Active Market' : (todayMarket?.routeType || 'Route Assigned')}
+              type="route"
+            />
+          </div>
+
+          <div className="mt-2 pt-3 border-t border-white/10 flex justify-between items-center">
+            <div>
+              <div className="flex items-center gap-1.5">
+                <p className="text-[10px] text-red-200 uppercase font-bold tracking-widest">
+                  {isDayActive ? "TODAY'S ACTIVE MARKET" : "ASSIGNED MARKET / ROUTE"}
+                </p>
+                {isDayActive && (
+                  <span className="inline-flex items-center gap-1 px-1.5 py-0.2 bg-emerald-400/20 text-emerald-300 border border-emerald-400/30 rounded text-[9px] font-black uppercase">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                    Live Active
+                  </span>
+                )}
               </div>
+              <h2 className="text-3xl font-black tracking-tight text-amber-300 uppercase">
+                {todayMarket?.marketName || 'PACHORE'}
+              </h2>
+              <p className="text-xs text-amber-100/90 mt-0.5 flex items-center gap-1">
+                <Store className="w-3.5 h-3.5 text-amber-300" />
+                <span>{authorizedShops.length} Active Market Shops</span>
+              </p>
+            </div>
+
+            {!todayCheckIn ? (
               <button
                 onClick={() => setActiveModal('checkin')}
-                className="py-2.5 px-4 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-500 hover:to-amber-600 text-red-950 rounded-2xl font-black text-xs shadow-lg flex items-center gap-1.5 transform active:scale-95 transition-all"
+                className="py-3 px-5 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-500 hover:to-amber-600 text-red-950 rounded-2xl font-black text-sm shadow-lg flex items-center gap-2 transform active:scale-95 transition-all"
               >
-                <Play className="w-3.5 h-3.5 fill-red-950" />
-                <span>START MY DAY (SESSION {(todayCheckIn.sessions?.length || 1) + 1})</span>
+                <Play className="w-4 h-4 fill-red-950" />
+                <span>START MY DAY</span>
               </button>
+            ) : isDayActive ? (
+              <div className="flex flex-col items-end gap-1.5">
+                <div className="bg-emerald-500/20 border border-emerald-400/40 text-emerald-200 px-3 py-1 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-2xs">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                  <span>
+                    {todayCheckIn.sessions?.length > 1
+                      ? `Session ${todayCheckIn.sessions.length} Active (${todayCheckIn.startTime}) 🟢`
+                      : `Day Active (${todayCheckIn.startTime || todayCheckIn.createdTime}) 🟢`}
+                  </span>
+                </div>
+                <button
+                  onClick={() => setActiveModal('eod')}
+                  className="py-1 px-3 bg-red-950/80 hover:bg-red-900 border border-amber-400/40 text-amber-300 rounded-xl font-extrabold text-[11px] shadow-xs active:scale-95 transition-all"
+                >
+                  END MY DAY →
+                </button>
+              </div>
+            ) : (
+              <div className="flex flex-col items-end gap-1.5">
+                <div className="bg-slate-800/90 border border-slate-700 text-slate-300 px-2.5 py-0.5 rounded-lg text-[10px] font-bold flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+                  <span>Session {todayCheckIn.sessions?.length || 1} Ended ({todayCheckIn.endTime}) ⚪</span>
+                </div>
+                <button
+                  onClick={() => setActiveModal('checkin')}
+                  className="py-2.5 px-4 bg-gradient-to-r from-amber-400 to-amber-500 hover:from-amber-500 hover:to-amber-600 text-red-950 rounded-2xl font-black text-xs shadow-lg flex items-center gap-1.5 transform active:scale-95 transition-all"
+                >
+                  <Play className="w-3.5 h-3.5 fill-red-950" />
+                  <span>START MY DAY (SESSION {(todayCheckIn.sessions?.length || 1) + 1})</span>
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Route Markets Pills & Change Market Action */}
+          {availableRouteMarkets.length > 1 && (
+            <div className="mt-3 pt-3 border-t border-white/10 flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-[10px] text-amber-200 font-bold uppercase">Route:</span>
+                {availableRouteMarkets.map((rm) => {
+                  const isCurrentActive = rm.id === todayMarket?.marketId || rm.name === todayMarket?.marketName;
+                  return (
+                    <span
+                      key={rm.id}
+                      className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold ${
+                        isCurrentActive
+                          ? 'bg-amber-400 text-slate-950 shadow-2xs'
+                          : 'bg-white/15 text-white/90'
+                      }`}
+                    >
+                      {rm.name} {isCurrentActive && '🟢'}
+                    </span>
+                  );
+                })}
+              </div>
+
+              {isDayActive && (
+                <button
+                  onClick={() => {
+                    setSelectedChangeMarketId(todayMarket?.marketId || availableRouteMarkets[0]?.id || '');
+                    setShowChangeMarketModal(true);
+                  }}
+                  className="py-1 px-2.5 bg-amber-400 hover:bg-amber-300 text-slate-950 rounded-lg text-[10px] font-black shadow-xs flex items-center gap-1 active:scale-95 transition-all"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  <span>Change Market</span>
+                </button>
+              )}
             </div>
           )}
         </div>
-      </div>
 
       {/* 2. Today's Targets & Live Progress */}
       <div className="bg-white p-4 rounded-3xl border border-slate-200 shadow-sm space-y-3">
@@ -1589,6 +1646,135 @@ return (
         onClose={() => setShowBlockedLogoutModal(false)}
         onGoToEndDay={() => setActiveModal('eod')}
       />
+
+      {/* Switch Active Market Modal */}
+      {showChangeMarketModal && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-xs">
+          <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95">
+            <div className="bg-gradient-to-r from-red-900 via-amber-900 to-amber-800 text-white p-5 flex justify-between items-center">
+              <div>
+                <p className="text-[10px] font-bold text-amber-300 uppercase tracking-widest">
+                  TODAY'S ROUTE • {todayMarket?.day || 'TODAY'}
+                </p>
+                <h2 className="text-lg font-black mt-0.5">Switch Active Market</h2>
+              </div>
+              <button
+                onClick={() => setShowChangeMarketModal(false)}
+                className="p-1.5 rounded-xl text-slate-300 hover:text-white hover:bg-white/10"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4 overflow-y-auto flex-1 text-xs text-slate-800">
+              <p className="text-slate-600 font-medium">
+                Select a market from your assigned route. Your shop list and new orders/collections will immediately switch to this active market.
+              </p>
+
+              {/* Markets List */}
+              <div className="space-y-2.5">
+                {availableRouteMarkets.map((mkt, idx) => {
+                  const isSelected = selectedChangeMarketId === mkt.id;
+                  const isCurrentActive = todayMarket?.marketId === mkt.id;
+
+                  return (
+                    <div
+                      key={mkt.id}
+                      onClick={() => setSelectedChangeMarketId(mkt.id)}
+                      className={`p-3.5 rounded-2xl border-2 cursor-pointer transition-all ${
+                        isSelected
+                          ? 'bg-amber-50/90 border-amber-500 shadow-xs ring-2 ring-amber-400/20'
+                          : 'bg-white border-slate-200 hover:border-slate-300'
+                      }`}
+                    >
+                      <div className="flex justify-between items-center">
+                        <div className="flex items-center gap-2.5">
+                          <div
+                            className={`w-5 h-5 rounded-full flex items-center justify-center border-2 ${
+                              isSelected
+                                ? 'border-amber-600 bg-amber-600 text-white'
+                                : 'border-slate-300 bg-white'
+                            }`}
+                          >
+                            {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-1.5">
+                              <h4 className="font-black text-slate-900 text-sm uppercase">{mkt.name}</h4>
+                              <span className="text-[9px] font-bold px-1.5 py-0.2 bg-slate-100 text-slate-600 rounded">
+                                Route #{idx + 1}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-slate-500 font-medium">
+                              {mkt.totalParties} Shops • ₹{(mkt.totalDue || 0).toLocaleString('en-IN')} Outstanding
+                            </p>
+                          </div>
+                        </div>
+
+                        {isCurrentActive ? (
+                          <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-extrabold rounded-md">
+                            Currently Active
+                          </span>
+                        ) : isSelected ? (
+                          <span className="px-2 py-0.5 bg-amber-500 text-slate-950 text-[10px] font-black rounded-md uppercase">
+                            Selected
+                          </span>
+                        ) : null}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Reason Input */}
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wider block">
+                  Reason for Switching Market (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={changeMarketReason}
+                  onChange={(e) => setChangeMarketReason(e.target.value)}
+                  placeholder="e.g., Completed Pachore, shifting to Akodiya"
+                  className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-amber-500"
+                />
+              </div>
+
+              {/* Buttons */}
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowChangeMarketModal(false)}
+                  className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const targetMkt = availableRouteMarkets.find((m) => m.id === selectedChangeMarketId) ||
+                      markets.find((m) => m.id === selectedChangeMarketId);
+                    if (targetMkt) {
+                      changeMarketerActiveMarket({
+                        marketerId: currentUser.id,
+                        newMarketId: targetMkt.id,
+                        newMarketName: targetMkt.name,
+                        changedBy: 'Marketer',
+                        reason: changeMarketReason || 'Route territory switched',
+                      });
+                    }
+                    setShowChangeMarketModal(false);
+                  }}
+                  disabled={!selectedChangeMarketId}
+                  className="flex-1 py-3 bg-gradient-to-r from-red-700 to-amber-700 text-white rounded-xl font-black text-xs shadow-md active:scale-95 disabled:opacity-50"
+                >
+                  Switch Active Market →
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
