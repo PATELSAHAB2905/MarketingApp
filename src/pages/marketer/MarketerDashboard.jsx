@@ -18,6 +18,7 @@ import MarketerPerformance from './MarketerPerformance';
 import MarketerPartyStatement from './MarketerPartyStatement';
 import ChangePasswordModal from '../../components/common/ChangePasswordModal';
 import LogoutBlockedModal from '../../components/common/LogoutBlockedModal';
+import MarketerTargetPacingCard from '../../components/common/MarketerTargetPacingCard';
 import { locationTrackingService } from '../../services/locationTrackingService';
 
 import {
@@ -543,17 +544,20 @@ export default function MarketerDashboard({ activeTab, setActiveTab }) {
           )}
         </div>
 
-      {/* 2. Today's Targets & Live Progress */}
-      <div className="bg-white p-4 rounded-3xl border border-slate-200 shadow-sm space-y-3">
-        <div className="flex justify-between items-center border-b border-slate-100 pb-2">
-          <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-            <TrendingUp className="w-4 h-4 text-red-700" />
-            TODAY'S TARGET & PROGRESS
-          </h3>
-          <span className="text-[11px] font-semibold text-red-700 bg-red-50 px-2 py-0.5 rounded-full border border-red-100">
-            Live
-          </span>
-        </div>
+        {/* 2. Complete Monthly Target & Pacing Card */}
+        <MarketerTargetPacingCard marketerId={currentUser?.id} initialMonth="September 2026" />
+
+        {/* 3. Today's Targets & Live Progress */}
+        <div className="bg-white p-4 rounded-3xl border border-slate-200 shadow-sm space-y-3">
+          <div className="flex justify-between items-center border-b border-slate-100 pb-2">
+            <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+              <TrendingUp className="w-4 h-4 text-red-700" />
+              TODAY'S TARGET & PROGRESS
+            </h3>
+            <span className="text-[11px] font-semibold text-red-700 bg-red-50 px-2 py-0.5 rounded-full border border-red-100">
+              Live
+            </span>
+          </div>
 
         {/* Target 1: Sales Order KG */}
         <div className="space-y-1">

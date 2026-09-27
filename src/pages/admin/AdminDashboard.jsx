@@ -34,6 +34,8 @@ export default function AdminDashboard({ onNavigate }) {
     checkIns = [],
     getTodayMarket,
     getTodayAvailableMarkets,
+    getMarketerTargetMetrics,
+    targets = [],
   } = useData();
 
   const todayDate = getFormattedDate();
@@ -42,6 +44,7 @@ export default function AdminDashboard({ onNavigate }) {
   const currentMonthName = 'August 2026';
 
   const [timeframe, setTimeframe] = useState('TODAY'); // 'TODAY' | 'MONTH' | 'ALL'
+  const [targetMonitoringMonth, setTargetMonitoringMonth] = useState('September 2026');
 
   // Filter datasets based on selected timeframe
   const isMatch = (item) => {
@@ -399,6 +402,146 @@ export default function AdminDashboard({ onNavigate }) {
                     </td>
                     <td className="py-3.5 px-3 text-right font-black text-emerald-700">
                       ₹{mVal.toLocaleString('en-IN')}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* MARKETER MONTHLY TARGET & PACING MONITORING TABLE (Requirement #15) */}
+      <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-xs space-y-4">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-slate-100 pb-3">
+          <div>
+            <h3 className="text-base font-black text-slate-900 uppercase flex items-center gap-2">
+              <Target className="w-5 h-5 text-red-700" />
+              <span>MARKETER MONTHLY TARGET & PACING MONITORING</span>
+            </h3>
+            <p className="text-xs text-slate-500 font-medium">
+              Real-time monitoring comparing actual sales achievement against expected daily run-rate
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <select
+              value={targetMonitoringMonth}
+              onChange={(e) => setTargetMonitoringMonth(e.target.value)}
+              className="bg-slate-100 border border-slate-200 rounded-xl px-3 py-1.5 text-xs font-black text-slate-800"
+            >
+              <option value="September 2026">September 2026</option>
+              <option value="August 2026">August 2026</option>
+              <option value="October 2026">October 2026</option>
+            </select>
+
+            <button
+              onClick={() => onNavigate && onNavigate('targets')}
+              className="text-xs font-bold text-red-700 hover:underline flex items-center gap-1"
+            >
+              Targets Master <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs text-left">
+            <thead>
+              <tr className="border-b border-slate-200 text-[11px] text-slate-400 uppercase font-bold">
+                <th className="pb-3 px-3">Marketer</th>
+                <th className="pb-3 px-3 text-right">Monthly Target</th>
+                <th className="pb-3 px-3 text-right">Achievement</th>
+                <th className="pb-3 px-3 text-right">Achievement %</th>
+                <th className="pb-3 px-3 text-right">Expected Till Today</th>
+                <th className="pb-3 px-3 text-center">Pace</th>
+                <th className="pb-3 px-3 text-right">Remaining</th>
+                <th className="pb-3 px-3 text-center">Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {marketers.map((m) => {
+                const metrics = getMarketerTargetMetrics
+                  ? getMarketerTargetMetrics(m.id, targetMonitoringMonth)
+                  : {
+                      monthlyTargetKg: 3380,
+                      actualAchievementKg: 0,
+                      achievementPct: 0,
+                      expectedTargetTillToday: 1300,
+                      paceDiffPct: 0,
+                      paceStatus: 'ON_TRACK',
+                      remainingTargetKg: 3380,
+                      isTargetAchieved: false,
+                    };
+
+                return (
+                  <tr key={m.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="py-3.5 px-3 font-extrabold text-slate-900 text-sm">
+                      {m.name}
+                      <p className="text-[11px] text-slate-400 font-normal">{m.mobile}</p>
+                    </td>
+
+                    <td className="py-3.5 px-3 text-right font-black text-slate-900">
+                      {metrics.monthlyTargetKg.toLocaleString('en-IN')} KG
+                      <span className="block text-[10px] text-slate-400 font-normal">{metrics.dailyTargetKg} KG/day</span>
+                    </td>
+
+                    <td className="py-3.5 px-3 text-right font-black text-emerald-800">
+                      {metrics.actualAchievementKg.toLocaleString('en-IN')} KG
+                    </td>
+
+                    <td className="py-3.5 px-3 text-right font-black">
+                      <span className="px-2 py-0.5 bg-slate-100 rounded-lg text-slate-900">
+                        {metrics.achievementPct}%
+                      </span>
+                    </td>
+
+                    <td className="py-3.5 px-3 text-right font-bold text-slate-800">
+                      {metrics.expectedTargetTillToday.toLocaleString('en-IN')} KG
+                    </td>
+
+                    <td className="py-3.5 px-3 text-center font-extrabold">
+                      <span
+                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-black ${
+                          metrics.paceStatus === 'AHEAD'
+                            ? 'bg-emerald-100 text-emerald-800'
+                            : metrics.paceStatus === 'BEHIND'
+                            ? 'bg-red-100 text-red-800'
+                            : 'bg-amber-100 text-amber-800'
+                        }`}
+                      >
+                        {metrics.paceStatus === 'AHEAD' && `+${Math.abs(metrics.paceDiffPct).toFixed(1)}%`}
+                        {metrics.paceStatus === 'BEHIND' && `-${Math.abs(metrics.paceDiffPct).toFixed(1)}%`}
+                        {metrics.paceStatus === 'ON_TRACK' && '±0.0%'}
+                      </span>
+                    </td>
+
+                    <td className="py-3.5 px-3 text-right font-bold">
+                      <span className={metrics.isTargetAchieved ? 'text-emerald-700 font-black' : 'text-slate-800'}>
+                        {metrics.isTargetAchieved ? '0 KG' : `${metrics.remainingTargetKg.toLocaleString('en-IN')} KG`}
+                      </span>
+                    </td>
+
+                    <td className="py-3.5 px-3 text-center">
+                      <span
+                        className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black ${
+                          metrics.paceStatus === 'AHEAD'
+                            ? 'bg-emerald-50 text-emerald-800 border border-emerald-300'
+                            : metrics.paceStatus === 'BEHIND'
+                            ? 'bg-red-50 text-red-800 border border-red-300'
+                            : 'bg-amber-50 text-amber-800 border border-amber-300'
+                        }`}
+                      >
+                        <span
+                          className={`w-1.5 h-1.5 rounded-full ${
+                            metrics.paceStatus === 'AHEAD'
+                              ? 'bg-emerald-500'
+                              : metrics.paceStatus === 'BEHIND'
+                              ? 'bg-red-500'
+                              : 'bg-amber-500'
+                          }`}
+                        />
+                        <span>{metrics.paceStatus === 'AHEAD' ? 'AHEAD' : metrics.paceStatus === 'BEHIND' ? 'BEHIND' : 'ON TRACK'}</span>
+                      </span>
                     </td>
                   </tr>
                 );

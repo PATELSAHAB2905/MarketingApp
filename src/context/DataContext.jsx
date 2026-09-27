@@ -24,6 +24,12 @@ import {
   COLLECTIONS,
 } from '../services/syncService';
 import { isShopMatchingRecord, calculatePartyLedger } from '../utils/partyLedgerHelper';
+import {
+  calculateMarketerMonthlyMetrics,
+  calculateMonthWorkingDays,
+  parseMonthYear,
+  MONTH_NAMES,
+} from '../utils/targetEngine';
 
 const DataContext = createContext();
 
@@ -887,46 +893,142 @@ export const DataProvider = ({ children }) => {
     addAuditLog('Admin', 'ADMIN', 'DELETE_CONNECTED_MARKET', `Market ID: ${id}`, {}, {});
   };
 
-  // ======= TARGET CRUD (date-range based) =======
+  // ======= TARGET ENGINE & CRUD (Month-based with history & run-rate) =======
   const addTarget = (targetData) => {
+    const monthInfo = parseMonthYear(targetData.month || targetData.monthKey || 'September 2026');
+    const { totalWorkingDays } = calculateMonthWorkingDays({
+      year: monthInfo.year,
+      monthIndex: monthInfo.monthIndex,
+      marketerId: targetData.marketerId,
+      weeklyRoutes,
+      customWorkingDays: targetData.workingDays || null,
+    });
+
+    const monthlyKg = Number(targetData.monthlyKg) || 3380;
+    const workingDays = Number(targetData.workingDays) || totalWorkingDays || 26;
+    const dailyKg = workingDays > 0 ? Math.round((monthlyKg / workingDays) * 10) / 10 : (targetData.dailyKg || 130);
+
+    const initialHistoryEntry = {
+      timestamp: new Date().toISOString(),
+      changedBy: targetData.changedBy || 'Admin',
+      monthlyKg,
+      workingDays,
+      dailyKg,
+      reason: targetData.reason || `Target created for ${monthInfo.displayMonth}`,
+      notes: targetData.notes || '',
+    };
+
     const newTarget = {
-      id: `tgt-${Date.now()}`,
-      active: true,
+      id: targetData.id || `tgt-${Date.now()}`,
+      marketerId: targetData.marketerId,
+      marketerName: targetData.marketerName || marketers.find((m) => m.id === targetData.marketerId)?.name || 'Marketer',
+      month: monthInfo.displayMonth,
+      monthKey: monthInfo.monthKey,
+      targetType: 'Monthly',
+      startDate: targetData.startDate || `01-${String(monthInfo.monthIndex + 1).padStart(2, '0')}-${monthInfo.year}`,
+      endDate: targetData.endDate || `${new Date(monthInfo.year, monthInfo.monthIndex + 1, 0).getDate()}-${String(monthInfo.monthIndex + 1).padStart(2, '0')}-${monthInfo.year}`,
+      monthlyKg,
+      workingDays,
+      dailyKg,
+      dailyCollection: targetData.dailyCollection || 25000,
+      monthlyCollection: targetData.monthlyCollection || 650000,
+      dailyVisits: targetData.dailyVisits || 30,
+      dailyNewCustomers: targetData.dailyNewCustomers || 3,
+      weeklyKg: targetData.weeklyKg || Math.round(dailyKg * 5),
+      weeklyCollection: targetData.weeklyCollection || 125000,
+      weeklyVisits: targetData.weeklyVisits || 150,
+      weeklyNewCustomers: targetData.weeklyNewCustomers || 15,
+      active: targetData.active !== false,
       createdDate: getFormattedDate(),
+      targetHistory: targetData.targetHistory?.length ? targetData.targetHistory : [initialHistoryEntry],
       ...targetData,
     };
-    setTargets(prev => [newTarget, ...prev]);
+
+    setTargets((prev) => {
+      // Replace existing target for same marketer and same monthKey if present
+      const filtered = prev.filter(
+        (t) => !(t.marketerId === newTarget.marketerId && (t.monthKey === newTarget.monthKey || t.month === newTarget.month))
+      );
+      return [newTarget, ...filtered];
+    });
+
     persistToFirestore('targets', newTarget.id, newTarget);
-    addAuditLog('Admin', 'ADMIN', 'CREATE_TARGET', `Target for ${targetData.marketerName || targetData.marketerId}`, null, newTarget);
+    addAuditLog('Admin', 'ADMIN', 'CREATE_TARGET', `Monthly target for ${newTarget.marketerName} (${newTarget.month}: ${monthlyKg} KG)`, null, newTarget);
     return newTarget;
   };
 
   const updateTarget = (id, changes) => {
     let updated = null;
-    setTargets(prev => prev.map(t => {
-      if (t.id === id) {
-        updated = { ...t, ...changes, updatedDate: getFormattedDate() };
-        return updated;
-      }
-      return t;
-    }));
-    if (updated) persistToFirestore('targets', id, updated);
-    addAuditLog('Admin', 'ADMIN', 'UPDATE_TARGET', `Target ID: ${id}`, {}, changes);
+    setTargets((prev) =>
+      prev.map((t) => {
+        if (t.id === id) {
+          const monthlyKg = changes.monthlyKg !== undefined ? Number(changes.monthlyKg) : t.monthlyKg;
+          const workingDays = changes.workingDays !== undefined ? Number(changes.workingDays) : t.workingDays;
+          const dailyKg = workingDays > 0 ? Math.round((monthlyKg / workingDays) * 10) / 10 : t.dailyKg;
+
+          const newHistoryLog = {
+            timestamp: new Date().toISOString(),
+            changedBy: changes.changedBy || 'Admin',
+            monthlyKg,
+            workingDays,
+            dailyKg,
+            previousMonthlyKg: t.monthlyKg,
+            previousWorkingDays: t.workingDays,
+            reason: changes.reason || 'Target updated by Admin',
+            notes: changes.notes || '',
+          };
+
+          const existingHistory = Array.isArray(t.targetHistory) ? t.targetHistory : [];
+
+          updated = {
+            ...t,
+            ...changes,
+            monthlyKg,
+            workingDays,
+            dailyKg,
+            targetHistory: [newHistoryLog, ...existingHistory],
+            updatedDate: getFormattedDate(),
+            updatedTime: getFormattedTime(),
+          };
+          return updated;
+        }
+        return t;
+      })
+    );
+
+    if (updated) {
+      persistToFirestore('targets', id, updated);
+      addAuditLog('Admin', 'ADMIN', 'UPDATE_TARGET', `Target ${id} updated for ${updated.marketerName}`, {}, changes);
+    }
+    return updated;
   };
 
   const deleteTarget = (id) => {
-    setTargets(prev => prev.filter(t => t.id !== id));
+    setTargets((prev) => prev.filter((t) => t.id !== id));
     removeDocFromFirestore('targets', id);
     addAuditLog('Admin', 'ADMIN', 'DELETE_TARGET', `Target ID: ${id}`, {}, {});
   };
 
+  // getMarketerTargetMetrics: Single source of truth for monthly target, actuals, pacing, run-rate, day breakdown
+  const getMarketerTargetMetrics = (marketerId, monthStr = 'September 2026') => {
+    const mObj = marketers.find((m) => m.id === marketerId);
+    return calculateMarketerMonthlyMetrics({
+      marketerId,
+      marketerName: mObj?.name || 'Marketer',
+      monthStr,
+      targets,
+      orders,
+      returns,
+      weeklyRoutes,
+      todayDateStr: getFormattedDate(),
+    });
+  };
+
   // Returns the most applicable active target for a marketer on a given date
   const getActiveTarget = (marketerId, dateStr = getFormattedDate()) => {
-    // Find active targets for this marketer that cover the given date
-    const applicableTargets = targets.filter(t => {
+    const applicableTargets = targets.filter((t) => {
       if (t.marketerId !== marketerId) return false;
       if (!t.active) return false;
-      // Date range check (DD-MM-YYYY format)
       if (t.startDate && t.endDate) {
         const toDateNum = (dStr) => {
           const parts = dStr.split('-');
@@ -935,9 +1037,8 @@ export const DataProvider = ({ children }) => {
         const dateNum = toDateNum(dateStr);
         return dateNum >= toDateNum(t.startDate) && dateNum <= toDateNum(t.endDate);
       }
-      return true; // No date range = always applicable
+      return true;
     });
-    // Return most recent (first in array since we prepend on create)
     return applicableTargets[0] || null;
   };
 
@@ -3075,6 +3176,11 @@ export const DataProvider = ({ children }) => {
         getAuthorizedShops,
         getShopOutstanding,
         getActiveTarget,
+        getMarketerTargetMetrics,
+        calculateMarketerMonthlyMetrics,
+        calculateMonthWorkingDays,
+        parseMonthYear,
+        MONTH_NAMES,
         products, setProducts,
         masterMarketGroups, setMasterMarketGroups,
         markets, setMarkets, addMarket, assignMarketToMarketer,
