@@ -208,8 +208,8 @@ export const calculateMarketerMonthlyMetrics = ({
   // 1. Find the target configuration for this marketer and this month
   const targetRecord = targets.find((t) => {
     if (t.marketerId !== marketerId) return false;
-    if (t.monthKey === monthKey) return true;
-    if (t.month && t.month.toLowerCase() === displayMonth.toLowerCase()) return true;
+    if (t.monthKey && t.monthKey === monthKey) return true;
+    if (t.month && (t.month.toLowerCase() === displayMonth.toLowerCase() || t.month.toLowerCase() === monthStr.toLowerCase())) return true;
     // Check start and end date overlap
     if (t.startDate && t.endDate) {
       const sDate = parseDateStr(t.startDate);
@@ -218,11 +218,7 @@ export const calculateMarketerMonthlyMetrics = ({
       return targetMonthDate >= sDate && targetMonthDate <= eDate;
     }
     return false;
-  }) || targets.find((t) => t.marketerId === marketerId && t.active !== false) || null;
-
-  // Monthly Target KG
-  const monthlyTargetKg = targetRecord?.monthlyKg || 3380;
-  const targetHistory = targetRecord?.targetHistory || [];
+  }) || null;
 
   // 2. Working days in month calculation
   const { totalDaysInMonth, totalWorkingDays, workingDaysList } = calculateMonthWorkingDays({
@@ -233,8 +229,19 @@ export const calculateMarketerMonthlyMetrics = ({
     customWorkingDays: targetRecord?.workingDays || null,
   });
 
+  // Determine standard daily KG based on marketer if not configured
+  const standardDailyKg = marketerId === 'marketer-2' ? 120
+    : marketerId === 'marketer-3' ? 110
+    : marketerId === 'marketer-5' ? 100
+    : 130; // Deepak (marketer-1) & Pankaj (marketer-4)
+
+  // Monthly Target KG (defaults dynamically to dailyTarget * totalWorkingDays, e.g. 130 * 26 = 3380 KG)
+  const monthlyTargetKg = targetRecord?.monthlyKg || Math.round(standardDailyKg * totalWorkingDays);
+  const isConfigured = Boolean(targetRecord);
+  const targetHistory = targetRecord?.targetHistory || [];
+
   // Daily Target = Monthly Target ÷ Working Days
-  const dailyTargetKg = totalWorkingDays > 0 ? Math.round((monthlyTargetKg / totalWorkingDays) * 10) / 10 : 130;
+  const dailyTargetKg = totalWorkingDays > 0 ? Math.round((monthlyTargetKg / totalWorkingDays) * 10) / 10 : standardDailyKg;
 
   // 3. Elapsed working days up to today
   const todayDateObj = parseDateStr(todayDateStr);
@@ -437,6 +444,7 @@ export const calculateMarketerMonthlyMetrics = ({
     todayDiffKg,
     todayDiffPct,
     todayStatus,
+    isConfigured,
     targetHistory,
     targetRecord,
     dailyBreakdown,

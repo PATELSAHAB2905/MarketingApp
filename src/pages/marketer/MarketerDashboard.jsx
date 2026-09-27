@@ -292,9 +292,9 @@ export default function MarketerDashboard({ activeTab, setActiveTab }) {
       );
     }
 
-    if (activeTab === 'summary') {
+    if (activeTab === 'summary' || activeTab === 'performance' || activeTab === 'targets') {
       return (
-        <div className="pb-24 p-4 max-w-md mx-auto">
+        <div className="pb-24 p-4 max-w-2xl mx-auto">
           <MarketerPerformance />
         </div>
       );

@@ -58,7 +58,7 @@ export default function AdminSidebar({ activeTab, setActiveTab }) {
       items: [
         { id: 'old-data-import', label: 'Historical Data Import', icon: Database },
         { id: 'fuel', label: 'Fuel Management', icon: Fuel },
-        { id: 'targets', label: 'Targets', icon: Target },
+        { id: 'targets', label: 'Target Management', icon: Target },
         { id: 'reports', label: 'Reports & Analytics', icon: BarChart },
         { id: 'data-import', label: 'Vyapar Data Import', icon: Database },
         { id: 'sheets-setup', label: 'Sheets Setup & Sync', icon: FileSpreadsheet },

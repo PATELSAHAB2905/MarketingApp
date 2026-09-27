@@ -99,12 +99,27 @@ export const DataProvider = ({ children }) => {
   const [targets, setTargets] = useState(() => {
     const s = localStorage.getItem('PATEL_TARGETS');
     if (s) {
-      const parsed = JSON.parse(s);
-      // Migrate old flat targets (array without IDs) to new format
-      if (parsed.length > 0 && !parsed[0].id) {
-        return INITIAL_TARGETS;
+      try {
+        const parsed = JSON.parse(s);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          // Check if any old target had 2800 KG for marketer-1 in September or if Sep targets missing
+          const hasProperSepTarget = parsed.some(
+            (t) => (t.marketerId === 'marketer-1' && (t.monthKey === '2026-09' || t.month === 'September 2026') && t.monthlyKg === 3380)
+          );
+          if (!hasProperSepTarget) {
+            // Merge INITIAL_TARGETS for September 2026 with non-September custom targets
+            const existingNonSep = parsed.filter(
+              (p) => !(p.monthKey === '2026-09' || (p.month && p.month.includes('September 2026')))
+            );
+            const merged = [...INITIAL_TARGETS, ...existingNonSep];
+            localStorage.setItem('PATEL_TARGETS', JSON.stringify(merged));
+            return merged;
+          }
+          return parsed;
+        }
+      } catch (e) {
+        console.error('Error reading PATEL_TARGETS:', e);
       }
-      return parsed;
     }
     return INITIAL_TARGETS;
   });

@@ -1,12 +1,12 @@
 import React from 'react';
-import { Home, Store, FileSpreadsheet, CalendarCheck, Menu } from 'lucide-react';
+import { Home, Store, Award, FileSpreadsheet, Menu } from 'lucide-react';
 
 export default function MarketerBottomNav({ activeTab, setActiveTab }) {
   const navItems = [
     { id: 'home', label: 'HOME', icon: Home },
     { id: 'shops', label: 'SHOPS', icon: Store },
+    { id: 'performance', label: 'PERFORMANCE', icon: Award },
     { id: 'statements', label: 'LEDGERS', icon: FileSpreadsheet },
-    { id: 'followups', label: 'FOLLOW-UP', icon: CalendarCheck },
     { id: 'more', label: 'MORE', icon: Menu },
   ];
 
